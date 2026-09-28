@@ -132,6 +132,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        meeting.shutdown()  // vor dem Diktat: Das schließt das Modell, das die letzten Abschnitte noch braucht
         dictation.shutdown()
         loader.sync { loadedTranscriber?.close() }
     }
