@@ -59,6 +59,21 @@ final class NotchOverlay {
         show(.recording(handsFree: handsFree))
     }
 
+    /// Legt das Fenster beim Start an und zeichnet es einmal unsichtbar – so muss das erste Einblenden nicht darauf warten.
+    func warmUp() {
+        guard let screen = NSScreen.main, !panel.isVisible else { return }
+        model.geometry = NotchGeometry(screen, style: style)
+        panel.setFrame(frame(for: model.geometry, on: screen), display: false)
+        panel.alphaValue = 0
+        panel.orderFrontRegardless()
+        let current = generation
+        DispatchQueue.main.async {
+            guard self.generation == current else { return }
+            self.panel.orderOut(nil)
+            self.panel.alphaValue = 1
+        }
+    }
+
     func showWorking() { show(.working) }
 
     func showResult(_ text: String, copied: Bool = false) {
@@ -155,20 +170,32 @@ final class NotchOverlay {
         let screen = NSScreen.screens.first { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) } ?? NSScreen.main
         guard let screen else { return }
         let geometry = NotchGeometry(screen, style: style)
-        if model.state == .hidden || !panel.isVisible || geometry != model.geometry {
-            model.geometry = geometry
-            model.state = .hidden  // aus der Ausgangsgröße aufziehen
-            let origin = geometry.bubble
-                ? CGPoint(x: geometry.centerX - Self.canvas.width / 2, y: geometry.floor + 4)
-                : CGPoint(x: geometry.centerX - Self.canvas.width / 2, y: screen.frame.maxY - Self.canvas.height)
-            panel.setFrame(NSRect(origin: origin, size: Self.canvas), display: false)
+        // Anderer Bildschirm oder Stil: erst die Ausgangsgröße dort zeichnen, dann aufziehen. Sonst ist sie schon
+        // gezeichnet, und das Aufziehen beginnt gleich im nächsten Bild.
+        let reset = geometry != model.geometry || (model.state != .hidden && !panel.isVisible)
+        if model.state == .hidden || !panel.isVisible || reset {
+            if reset {
+                model.geometry = geometry
+                model.state = .hidden
+            }
+            panel.setFrame(frame(for: geometry, on: screen), display: false)
+            panel.alphaValue = 1  // falls das Vorzeichnen beim Start noch nicht fertig ist
             panel.orderFrontRegardless()
         }
-        DispatchQueue.main.async {
-            guard self.generation == current else { return }
-            withAnimation(.spring(response: 0.38, dampingFraction: 0.78)) { self.model.state = state }
+        let open = { withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { self.model.state = state } }
+        if reset {
+            DispatchQueue.main.async { if self.generation == current { open() } }
+        } else {
+            open()
         }
         if case .result = state { startMouseTracking() } else { stopMouseTracking() }
+    }
+
+    private func frame(for geometry: NotchGeometry, on screen: NSScreen) -> NSRect {
+        let origin = geometry.bubble
+            ? CGPoint(x: geometry.centerX - Self.canvas.width / 2, y: geometry.floor + 4)
+            : CGPoint(x: geometry.centerX - Self.canvas.width / 2, y: screen.frame.maxY - Self.canvas.height)
+        return NSRect(origin: origin, size: Self.canvas)
     }
 
     private func stopPreview() {

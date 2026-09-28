@@ -94,6 +94,7 @@ final class Dictation {
 
     /// Beim Start einmal anlegen, was das erste Diktat sonst aufhalten würde.
     func warmUp() {
+        overlay.warmUp()
         // Die Rechtschreibprüfung muss auf dem Hauptthread entstehen – ihr erster Aufruf im Hintergrund kann hängen.
         _ = NSSpellChecker.shared
     }
