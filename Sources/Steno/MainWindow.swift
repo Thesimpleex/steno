@@ -82,6 +82,8 @@ final class MainWindow: NSObject, NSWindowDelegate {
 
 final class Navigation: ObservableObject {
     @Published var page = Page.start
+    /// Das geöffnete Meeting auf der Meetings-Seite; ohne eines zeigt die Seite die Liste.
+    @Published var meeting: MeetingLibrary.Item?
 }
 
 struct RootView: View {
@@ -94,13 +96,13 @@ struct RootView: View {
     var body: some View {
         VStack(spacing: 0) {
             // Liegt über dem Inhalt: macOS lässt Scrollbereiche sonst unter die Titelleiste laufen.
-            TopBar(navigation: navigation, state: state)
+            TopBar(navigation: navigation, state: state, meeting: meeting)
                 .background(Theme.page)
                 .zIndex(1)
             Group {
                 switch navigation.page {
                 case .start: StartPage(state: state, navigation: navigation)
-                case .meetings: MeetingsPage(meeting: meeting, library: library)
+                case .meetings: MeetingsPage(navigation: navigation, meeting: meeting, library: library)
                 case .history: HistoryPage(navigation: navigation)
                 case .dictionary: DictionaryPage()
                 case .settings: SettingsPage(state: state, models: models)
@@ -112,6 +114,8 @@ struct RootView: View {
         .background(Theme.page)
         .ignoresSafeArea(edges: .top)
         .tint(Theme.accent)
+        // Nach dem Meeting soll die Liste mit dem neuen Eintrag erscheinen, nicht ein zuvor geöffnetes Meeting.
+        .onChange(of: meeting.state) { navigation.meeting = nil }
     }
 }
 
@@ -119,6 +123,7 @@ struct RootView: View {
 private struct TopBar: View {
     @ObservedObject var navigation: Navigation
     @ObservedObject var state: AppState
+    @ObservedObject var meeting: MeetingSession
     @Namespace private var selection
 
     var body: some View {
@@ -167,11 +172,13 @@ private struct TopBar: View {
         .background(Theme.well, in: Capsule())
     }
 
+    /// Bereitschaft der App – oder, solange aufgenommen wird, ein Hinweis darauf, auf jeder Seite sichtbar.
     private var status: some View {
-        Button { withAnimation { navigation.page = .start } } label: {
+        let recording = meeting.state == .running
+        return Button { withAnimation { navigation.page = recording ? .meetings : .start } } label: {
             HStack(spacing: 6) {
-                StatusDot(ok: state.ready)
-                Text(state.ready ? L("Bereit") : L("Einrichtung offen"))
+                if recording { RecordingDot() } else { StatusDot(ok: state.ready) }
+                Text(recording ? L("Meeting läuft") : state.ready ? L("Bereit") : L("Einrichtung offen"))
             }
             .font(.system(size: 12, weight: .medium))
             .foregroundStyle(.secondary)
