@@ -118,6 +118,13 @@ final class SystemAudio: AudioSource {
                     self?.scheduleRebuild()
                 })
             }
+            // Startet Spotify erst während des Meetings, kommt es nachträglich auf die Ausnahmeliste.
+            capture.add(Self.listen(Self.system, kAudioHardwarePropertyProcessObjectList, on: control) {
+                let excluded = Self.excluded(Self.clients(), own: getpid())
+                guard excluded != description.processes else { return }
+                description.processes = excluded
+                _ = Self.apply(description, to: tap)
+            })
         } catch {
             capture.run()
             throw error
