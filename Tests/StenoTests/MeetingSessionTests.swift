@@ -65,24 +65,43 @@ final class MeetingSessionTests: XCTestCase {
     func testRefusesToStartWithoutModelOrSourceOrTwice() throws {
         let whisper = session.transcription
         session.transcription = nil
-        assertThrows(.noModel) { try session.start(title: "", sources: .microphone) }
+        assertThrows(.noModel) { try start(.microphone) }
         session.transcription = whisper
-        assertThrows(.noSource) { try session.start(title: "", sources: []) }
-        try session.start(title: "", sources: .microphone)
-        assertThrows(.alreadyRunning) { try session.start(title: "", sources: .microphone) }
+        assertThrows(.noSource) { try start([]) }
+        try start(.microphone)
+        assertThrows(.alreadyRunning) { try start(.microphone) }
         XCTAssertEqual([you.starts, others.starts], [1, 0])
+    }
+
+    /// Wartet der Ton des Macs auf die Freigabe, bleibt der Hauptthread frei. Das Meeting beginnt erst mit der Antwort;
+    /// was das Mikrofon bis dahin hört, gehört nicht dazu, und ein zweiter Klick startet nichts noch einmal.
+    func testWaitingForPermissionKeepsTheMainThreadFree() {
+        let permission = DispatchSemaphore(value: 0)
+        others.waitsFor = permission
+        var answers = 0
+        session.start(title: "", sources: [.microphone, .systemAudio]) { _ in answers += 1 }
+        session.start(title: "", sources: [.microphone, .systemAudio]) { _ in answers += 1 }
+        you.play(TestAudio.speech(6) + TestAudio.silence(1))
+        RunLoop.main.run(until: .now + 0.1)
+        XCTAssertEqual(session.state, .idle)
+        XCTAssertEqual(answers, 0)
+
+        permission.signal()
+        wait { answers == 1 }
+        XCTAssertEqual(session.state, .running)
+        RunLoop.main.run(until: .now + 0.1)
+        XCTAssertEqual(session.entries, [])
+        XCTAssertEqual([answers, you.starts, others.starts], [1, 1, 1])
     }
 
     func testFailedStartLeavesNothingRunning() {
         others.failure = MeetingError.systemAudioDenied
-        assertThrows(.systemAudioDenied) { try session.start(title: "", sources: [.microphone, .systemAudio]) }
+        assertThrows(.systemAudioDenied) { try start([.microphone, .systemAudio]) }
         XCTAssertEqual(you.starts, you.stops, "was schon lief, ist wieder aus")
 
         others.failure = nil
         files.folderFailure = MeetingError.folderUnavailable("Steno Meetings")
-        assertThrows(.folderUnavailable("Steno Meetings")) {
-            try session.start(title: "", sources: [.microphone, .systemAudio])
-        }
+        assertThrows(.folderUnavailable("Steno Meetings")) { try start([.microphone, .systemAudio]) }
         XCTAssertEqual([you.starts, others.starts], [you.stops, others.stops])
         XCTAssertEqual(session.state, .idle)
         XCTAssertNil(session.folder)
@@ -92,15 +111,15 @@ final class MeetingSessionTests: XCTestCase {
     /// Mit einem Fehler von Core Audio kann niemand etwas anfangen – die Seite zeigt stattdessen einen Satz.
     func testSourceFailureGetsAPlainMessage() {
         others.failure = NSError(domain: NSOSStatusErrorDomain, code: -10851)
-        assertThrows(.unavailable(.others)) { try session.start(title: "", sources: [.microphone, .systemAudio]) }
+        assertThrows(.unavailable(.others)) { try start([.microphone, .systemAudio]) }
         others.failure = nil
         you.failure = Microphone.Failure.noInput
-        assertThrows(.unavailable(.you)) { try session.start(title: "", sources: [.microphone, .systemAudio]) }
+        assertThrows(.unavailable(.you)) { try start([.microphone, .systemAudio]) }
         XCTAssertEqual([you.starts, others.starts], [you.stops, others.stops])
     }
 
     func testRecordsBothSidesOnOneTimeline() throws {
-        try session.start(title: "Planung", sources: [.microphone, .systemAudio])
+        try start([.microphone, .systemAudio], title: "Planung")
         XCTAssertEqual(session.state, .running)
         XCTAssertEqual([you.starts, others.starts], [1, 1])
 
@@ -126,7 +145,7 @@ final class MeetingSessionTests: XCTestCase {
     func testResultsArrivingOutOfOrderStaySorted() throws {
         var answers: [(String?) -> Void] = []
         session.transcription = { _, done in answers.append(done) }
-        try session.start(title: "", sources: [.microphone, .systemAudio])
+        try start([.microphone, .systemAudio])
         others.play(TestAudio.speech(6) + TestAudio.silence(1))
         you.play(TestAudio.silence(8) + TestAudio.speech(6) + TestAudio.silence(1))
         wait { answers.count == 2 }
@@ -137,7 +156,7 @@ final class MeetingSessionTests: XCTestCase {
     }
 
     func testStopTranscribesWhatWasStillOpen() throws {
-        try session.start(title: "", sources: .microphone)
+        try start(.microphone)
         you.play(TestAudio.speech(2))
         RunLoop.main.run(until: .now + 0.1)
         XCTAssertEqual(session.entries, [], "noch keine Pause")
@@ -147,7 +166,7 @@ final class MeetingSessionTests: XCTestCase {
     }
 
     func testChunksWaitWhileTheModelIsSwitched() throws {
-        try session.start(title: "", sources: .microphone)
+        try start(.microphone)
         let whisper = session.transcription
         session.transcription = nil
         you.play(TestAudio.speech(6) + TestAudio.silence(1))
@@ -179,7 +198,7 @@ final class MeetingSessionTests: XCTestCase {
     func testFallingBehindKeepsEverything() throws {
         var answers: [(String?) -> Void] = []
         session.transcription = { _, done in answers.append(done) }
-        try session.start(title: "", sources: .systemAudio)
+        try start(.systemAudio)
         for _ in 0..<15 { others.play(TestAudio.speech(6) + TestAudio.silence(1)) }
         wait { answers.count == 15 }
         XCTAssertNotNil(session.problem)
@@ -191,7 +210,7 @@ final class MeetingSessionTests: XCTestCase {
     }
 
     func testSourceThatFailsAfterSleepLeavesTheOther() throws {
-        try session.start(title: "", sources: [.microphone, .systemAudio])
+        try start([.microphone, .systemAudio])
         let center = NSWorkspace.shared.notificationCenter
         center.post(name: NSWorkspace.willSleepNotification, object: nil)
         RunLoop.main.run(until: .now + 0.05)
@@ -211,7 +230,7 @@ final class MeetingSessionTests: XCTestCase {
 
     func testQuittingWaitsOnlyBrieflyButSaves() throws {
         session.transcription = { _, _ in }  // Whisper antwortet nie
-        try session.start(title: "", sources: .microphone)
+        try start(.microphone)
         you.play(TestAudio.speech(6) + TestAudio.silence(1))
         RunLoop.main.run(until: .now + 0.1)
         let begin = Date.now
@@ -226,7 +245,7 @@ final class MeetingSessionTests: XCTestCase {
     func testNotesMarksAndTasks() throws {
         session.addNote("ohne Meeting")
         XCTAssertEqual(session.entries, [])
-        try session.start(title: "", sources: .microphone)
+        try start(.microphone)
         session.addNote("  ")
         session.addNote("! Angebot schicken")
         session.addNote("Budget klären")
@@ -242,7 +261,7 @@ final class MeetingSessionTests: XCTestCase {
     }
 
     func testSameScreenshotOnlyOnce() throws {
-        try session.start(title: "", sources: .microphone)
+        try start(.microphone)
         let red = image(.red)
         session.addImage(red)
         session.addImage(red)
@@ -253,7 +272,7 @@ final class MeetingSessionTests: XCTestCase {
     }
 
     func testSavesRightAwayThenAtMostEveryOneAndAHalfSeconds() throws {
-        try session.start(title: "", sources: .microphone)
+        try start(.microphone)
         wait { self.files.writes.count == 1 }
         XCTAssertEqual(files.writes.count, 1, "gleich beim Start")
         session.addNote("eins")
@@ -269,6 +288,19 @@ final class MeetingSessionTests: XCTestCase {
     }
 
     // MARK: Hilfen
+
+    /// Startet wie die Meetings-Seite und wartet auf die Antwort; ein Fehler wird geworfen.
+    private func start(_ sources: MeetingSources, title: String = "") throws {
+        var answered = false
+        var failure: Error?
+        session.start(title: title, sources: sources) { error in
+            failure = error
+            answered = true
+        }
+        wait { answered }
+        XCTAssertTrue(answered, "keine Antwort")
+        if let failure { throw failure }
+    }
 
     /// Lässt den Hauptthread laufen, bis die Bedingung gilt – höchstens zwei Sekunden.
     private func wait(_ condition: () -> Bool) {
@@ -304,10 +336,13 @@ private final class FakeSource: AudioSource {
     var onSamples: (([Float]) -> Void)?
     var onLevel: ((Float) -> Void)?
     var failure: Error?
+    /// Hält den Start auf wie die Frage nach der Freigabe.
+    var waitsFor: DispatchSemaphore?
     private(set) var starts = 0
     private(set) var stops = 0
 
     func start() throws {
+        waitsFor?.wait()
         if let failure { throw failure }
         starts += 1
     }

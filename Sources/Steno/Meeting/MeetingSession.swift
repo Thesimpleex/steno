@@ -64,6 +64,8 @@ final class MeetingSession: ObservableObject {
     private var generation = 0
     /// Nach `stop`: Es kommt kein Abschnitt mehr dazu.
     private var flushed = false
+    /// Die Quellen starten gerade im Hintergrund.
+    private var starting = false
     private var asleep = false
     private var saveWork: DispatchWorkItem?
     private var observers: [NSObjectProtocol] = []
@@ -91,15 +93,18 @@ final class MeetingSession: ObservableObject {
         hook(systemAudio, as: .others)
     }
 
-    /// Beginnt ein Meeting. Wirft, wenn Modell, Freigabe oder Ordner fehlen.
-    func start(title: String, sources wanted: MeetingSources) throws {
-        guard state == .idle else { throw MeetingError.alreadyRunning }
-        guard transcription != nil else { throw MeetingError.noModel }
-        guard !wanted.isEmpty else { throw MeetingError.noSource }
+    /// Beginnt ein Meeting. Die Quellen starten im Hintergrund: Beim ersten Mal wartet der Ton des Macs, bis die Frage
+    /// nach der Freigabe beantwortet ist. `done` kommt auf dem Hauptthread, mit dem Fehler, wenn Modell, Freigabe oder
+    /// Ordner fehlen. Ein weiterer Aufruf, solange noch gestartet wird, bleibt ohne Wirkung und ohne Antwort.
+    func start(title: String, sources wanted: MeetingSources, done: @escaping (Error?) -> Void) {
+        guard !starting else { return }
+        guard state == .idle else { return done(MeetingError.alreadyRunning) }
+        guard transcription != nil else { return done(MeetingError.noModel) }
+        guard !wanted.isEmpty else { return done(MeetingError.noSource) }
         var chosen: [Speaker: AudioSource] = [:]
         if wanted.contains(.microphone) {
             if let microphone = microphone as? Microphone {
-                guard Microphone.authorized else { throw MeetingError.microphoneDenied }
+                guard Microphone.authorized else { return done(MeetingError.microphoneDenied) }
                 microphone.accumulates = false  // ein Meeting dauert Stunden; der Ton geht stückweise weiter
             }
             chosen[.you] = microphone
@@ -109,25 +114,40 @@ final class MeetingSession: ObservableObject {
 
         let info = MeetingInfo(title: title, startedAt: .now, sources: wanted)
         origin = Self.clock()
+        starting = true
+        DispatchQueue.global(qos: .userInitiated).async { [filing] in
+            var started: [AudioSource] = []
+            let result = Result {
+                for (speaker, source) in chosen {
+                    // Fehlt die Freigabe, sagt die Quelle es selbst; mit dem Fehler von Core Audio kann niemand etwas anfangen.
+                    do { try source.start() } catch { throw error as? MeetingError ?? MeetingError.unavailable(speaker) }
+                    started.append(source)
+                }
+                // Erst jetzt: Scheitert eine Quelle, bleibt kein leerer Ordner zurück.
+                return try filing.makeFolder(info)
+            }
+            if case .failure = result { started.forEach { $0.stopCapture() } }
+            DispatchQueue.main.async {
+                self.starting = false
+                do {
+                    self.begin(info, sources: chosen, in: try result.get())
+                    done(nil)
+                } catch {
+                    done(error)
+                }
+            }
+        }
+    }
+
+    /// Die Quellen laufen, der Ordner steht. Erst ab hier zählt ihr Ton – was davor kam, etwa während macOS nach der
+    /// Freigabe fragte, gehört noch zu keinem Meeting.
+    private func begin(_ info: MeetingInfo, sources chosen: [Speaker: AudioSource], in folder: URL) {
         work.sync {
             tracks = chosen.mapValues { _ in Track() }
             latest = MeetingLevels()
             nextLevels = 0
         }
-        var started: [AudioSource] = []
-        do {
-            for (speaker, source) in chosen {
-                // Fehlt die Freigabe, sagt die Quelle es selbst; mit dem Fehler von Core Audio kann niemand etwas anfangen.
-                do { try source.start() } catch { throw error as? MeetingError ?? MeetingError.unavailable(speaker) }
-                started.append(source)
-            }
-            // Erst jetzt: Scheitert eine Quelle, bleibt kein leerer Ordner zurück.
-            folder = try filing.makeFolder(info)
-        } catch {
-            started.forEach { $0.stopCapture() }
-            work.sync { tracks = [:] }
-            throw error
-        }
+        self.folder = folder
         sources = chosen
         self.info = info
         entries = []

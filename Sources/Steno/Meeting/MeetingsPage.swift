@@ -121,11 +121,8 @@ struct MeetingsPage: View {
     private func start() {
         failure = nil
         let name = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        do {
-            try meeting.start(title: name.isEmpty ? defaultTitle : name, sources: sources)
-            title = ""
-        } catch {
-            failure = error.localizedDescription
+        meeting.start(title: name.isEmpty ? defaultTitle : name, sources: sources) { error in
+            if let error { failure = error.localizedDescription } else { title = "" }
         }
     }
 }
