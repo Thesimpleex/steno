@@ -10,6 +10,11 @@ final class MeetingLibrary: ObservableObject {
 
     @Published private(set) var items: [Item] = []
 
+    /// Für Vorschaubilder und Tests: eine Liste, die ohne Ablage auskommt.
+    init(items: [Item] = []) {
+        self.items = items
+    }
+
     /// Liest die Ablage neu ein.
     func reload() {}
 

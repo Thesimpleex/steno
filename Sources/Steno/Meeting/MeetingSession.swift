@@ -22,6 +22,14 @@ final class MeetingSession: ObservableObject {
     /// Das geladene Sprachmodell; AppDelegate setzt es, so wie es `Dictation` bekommt.
     var transcriber: Transcriber?
 
+    /// Für Vorschaubilder und Tests: eine Sitzung mit fertigem Zustand, ohne Aufnahme.
+    init(state: State = .idle, info: MeetingInfo = MeetingInfo(title: "", startedAt: .now, sources: []),
+         entries: [MeetingEntry] = []) {
+        self.state = state
+        self.info = info
+        self.entries = entries
+    }
+
     /// Beginnt ein Meeting. Wirft, wenn Modell, Freigabe oder Ordner fehlen.
     func start(title: String, sources: MeetingSources) throws {
         guard state == .idle else { throw MeetingError.alreadyRunning }
