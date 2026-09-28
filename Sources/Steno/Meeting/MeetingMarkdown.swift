@@ -2,7 +2,7 @@ import Foundation
 
 /// Baut Protokoll.md aus dem Inhalt von meeting.json.
 enum MeetingMarkdown {
-    /// Beiträge derselben Person, die höchstens 5 s nacheinander beginnen, stehen in einem Absatz: Die Schnitte der Aufnahme sind technisch.
+    /// Beiträge derselben Person, die höchstens 5 s nach dem vorigen beginnen, stehen in einem Absatz: Die Schnitte der Aufnahme sind technisch.
     private static let paragraphGap: TimeInterval = 5
 
     /// Sprache und Zeitzone lassen sich nur für Tests austauschen.

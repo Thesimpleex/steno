@@ -41,7 +41,7 @@ struct MeetingInfo: Codable, Equatable {
     var othersLabel: String { othersName.isEmpty ? L("Andere") : othersName }
 }
 
-/// Inhalt von meeting.json und damit die Wahrheit über ein Meeting; Protokoll.md wird daraus gebaut.
+/// Inhalt von meeting.json. Maßgeblich ist diese Datei; Protokoll.md wird aus ihr gebaut.
 struct MeetingFile: Codable, Equatable {
     var info: MeetingInfo
     var entries: [MeetingEntry]

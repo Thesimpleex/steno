@@ -274,7 +274,7 @@ final class MeetingSession: ObservableObject {
 
     // MARK: Whisper
 
-    /// Wie beim Diktat: das Wörterbuch als Hinweis für Whisper, danach die Nachbearbeitung – nur hinter jedem Diktat.
+    /// Wie beim Diktat: das Wörterbuch als Hinweis für Whisper, danach die Nachbearbeitung. Diktate gehen vor.
     private static func whisper(_ transcriber: Transcriber) -> Transcription {
         { samples, completion in
             let vocabulary = DictionaryStore.shared.vocabulary
@@ -365,7 +365,8 @@ final class MeetingSession: ObservableObject {
         }
     }
 
-    /// Auf `storage`. Die Zwischenablage meldet dasselbe Bild gern mehrmals: gleich wie das letzte – nicht noch einmal.
+    /// Auf `storage`. Die Zwischenablage meldet dasselbe Bild gern mehrmals; gleicht es dem letzten, wird es nicht
+    /// noch einmal gespeichert.
     private func store(_ image: NSImage, at offset: TimeInterval, in folder: URL) -> String? {
         var hasher = Hasher()
         image.tiffRepresentation?.withUnsafeBytes { hasher.combine(bytes: $0) }  // `Data` selbst hasht nur 80 Bytes

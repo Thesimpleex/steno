@@ -76,7 +76,6 @@ struct StartPage: View {
         }
     }
 
-    /// Ein kurzer Hinweis am Ende der Seite.
     private var tip: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Image(systemName: "info.circle").font(.system(size: 12))

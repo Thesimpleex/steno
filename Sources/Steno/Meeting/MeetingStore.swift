@@ -2,7 +2,7 @@ import AppKit
 
 /// Legt Meetings als Ordner ab: meeting.json, Protokoll.md und bilder/.
 enum MeetingStore {
-    /// Für Tests: ersetzt die Ablage aus den Einstellungen.
+    /// Für Tests und Prüfbilder: ersetzt die Ablage aus den Einstellungen.
     static var rootOverride: URL?
 
     static var root: URL { rootOverride ?? URL(fileURLWithPath: Settings.meetingFolder, isDirectory: true) }
