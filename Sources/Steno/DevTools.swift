@@ -149,7 +149,8 @@ enum DevTools {
                              scrolledBy offset: CGFloat = 0) -> NSBitmapImageRep? {
         let navigation = Navigation()
         navigation.page = page
-        let window = MainWindow.makeWindow(RootView(navigation: navigation, state: state, models: models))
+        let window = MainWindow.makeWindow(RootView(navigation: navigation, state: state, models: models,
+                                                    meeting: MeetingSession(), library: MeetingLibrary()))
         window.setContentSize(NSSize(width: width, height: height))
         return render(window, dark: dark, colorfulButtons: colorfulButtons) {
             guard offset > 0, let scroll = firstScrollView(in: window.contentView) else { return }

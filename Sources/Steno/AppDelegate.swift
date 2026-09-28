@@ -45,7 +45,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let dictation = Dictation()
     private let keys = HotKeyMonitor()
     private let models = ModelStore()
-    private lazy var window = MainWindow(state: state, models: models)
+    private let meeting = MeetingSession()
+    private let library = MeetingLibrary()
+    private lazy var window = MainWindow(state: state, models: models, meeting: meeting, library: library)
     private lazy var onboarding = Onboarding(state: state, models: models)
     private var statusItem: NSStatusItem!
     private var subscriptions: Set<AnyCancellable> = []
@@ -157,6 +159,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let id = loadID
         modelLoading = true
         dictation.transcriber = nil
+        meeting.transcriber = nil
         updateModelStatus()
         loader.async {
             let previousURL = self.loadedURL
@@ -171,6 +174,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 done(loaded)
                 guard id == self.loadID else { return }  // inzwischen wurde schon ein anderes Modell gewählt
                 self.dictation.transcriber = transcriber
+                self.meeting.transcriber = transcriber
                 self.modelLoading = false
                 if !loaded { self.dictation.overlay.showMessage(L("Diese Modelldatei lässt sich nicht laden."), seconds: 3) }
                 self.updateModelStatus()

@@ -17,6 +17,8 @@ final class HotKeyMonitorTests: XCTestCase {
             case .chord: events.append("chord")
             case .escape: events.append("esc")
             case .pasteLast: events.append("paste")
+            case .note: events.append("note")
+            case .send: events.append("send")
             }
         }
     }
@@ -85,6 +87,35 @@ final class HotKeyMonitorTests: XCTestCase {
         XCTAssertEqual(drain(), ["esc"])
     }
 
+    func testReturnBelongsToTheRecording() {
+        XCTAssertFalse(press(36, 0), "ohne Aufnahme geht Return an die App")
+        XCTAssertEqual(drain(), [])
+        monitor.isRecording = true
+        XCTAssertTrue(press(36, 0))
+        XCTAssertTrue(press(76, 0), "auch Enter auf dem Ziffernblock")
+        XCTAssertEqual(drain(), ["send", "send"])
+    }
+
+    func testReturnIsNotAChord() {
+        monitor.hotKey = .leftOption
+        flags(HotKey.leftOption.keyCode, down(.leftOption))
+        monitor.isRecording = true
+        press(36, down(.leftOption))
+        flags(HotKey.leftOption.keyCode, 0)
+        XCTAssertEqual(drain(), ["down", "send", "up"])
+    }
+
+    func testNoteShortcutOnlyDuringMeeting() {
+        let chord = CGEventFlags.maskControl.rawValue | CGEventFlags.maskAlternate.rawValue
+        let n = Int64(KeyLayout.n)
+        XCTAssertFalse(press(n, chord), "ohne Meeting bleibt das Kürzel frei")
+        XCTAssertEqual(drain(), [])
+        monitor.isMeeting = true
+        XCTAssertTrue(press(n, chord))
+        XCTAssertFalse(press(n, CGEventFlags.maskControl.rawValue), "nur mit ⌃⌥")
+        XCTAssertEqual(drain(), ["note"])
+    }
+
     // MARK: Hilfen
 
     /// Flags, die macOS beim Drücken der Taste mitschickt: das Bit der Taste selbst und das Sammel-Bit.
@@ -105,10 +136,12 @@ final class HotKeyMonitorTests: XCTestCase {
         _ = monitor.feed(.flagsChanged, event)
     }
 
-    private func press(_ code: Int64, _ raw: UInt64) {
+    /// Liefert, ob der Monitor die Taste verschluckt hat.
+    @discardableResult
+    private func press(_ code: Int64, _ raw: UInt64) -> Bool {
         let event = CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(code), keyDown: true)!
         event.flags = CGEventFlags(rawValue: raw)
-        _ = monitor.feed(.keyDown, event)
+        return monitor.feed(.keyDown, event)
     }
 
     /// Der Monitor meldet über den Hauptthread – kurz laufen lassen, dann einsammeln.

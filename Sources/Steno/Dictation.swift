@@ -85,6 +85,7 @@ final class Dictation {
         case .chord(let time): keyChord(at: time)
         case .escape: escape()
         case .pasteLast: pasteLast()
+        case .note, .send: break  // die Notiz gehört dem Meeting; „Senden“ folgt
         }
     }
 

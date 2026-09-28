@@ -15,6 +15,10 @@ final class HotKeyMonitor {
         case escape
         /// ⌃⌥V
         case pasteLast
+        /// ⌃⌥N, nur während eines Meetings: Notiz, Markierung oder Aufgabe.
+        case note
+        /// Return während einer Aufnahme: einfügen und danach absenden.
+        case send
     }
 
     /// Markiert Tastendrücke, die Steno selbst erzeugt (⌘V beim Einfügen) – die ignoriert der Tap.
@@ -23,10 +27,17 @@ final class HotKeyMonitor {
     var handler: ((Event) -> Void)?
     private(set) var isRunning = false
 
-    /// Während einer Aufnahme wird Esc verschluckt, damit es nicht nebenbei einen Dialog schließt.
+    /// Während einer Aufnahme werden Esc und Return verschluckt: Esc soll nicht nebenbei einen Dialog schließen,
+    /// Return schickt das Diktat ab.
     var isRecording: Bool {
         get { recording.withLock { $0 } }
         set { recording.withLock { $0 = newValue } }
+    }
+
+    /// Nur solange ein Meeting läuft, gehört ⌃⌥N Steno – sonst bleibt das Kürzel für andere Apps frei.
+    var isMeeting: Bool {
+        get { meeting.withLock { $0 } }
+        set { meeting.withLock { $0 = newValue } }
     }
 
     /// Lässt sich jederzeit ändern; eine gerade gehaltene Taste wird trotzdem sauber losgelassen.
@@ -36,6 +47,7 @@ final class HotKeyMonitor {
     }
 
     private let recording = OSAllocatedUnfairLock(initialState: false)
+    private let meeting = OSAllocatedUnfairLock(initialState: false)
     private let key = OSAllocatedUnfairLock(initialState: HotKey.leftOption)
     /// Tastatur-Abgriff (darf Ereignisse verschlucken), Maus-Abgriff (hört nur mit) und der Runloop ihres Threads.
     private let taps = OSAllocatedUnfairLock(uncheckedState: (keys: CFMachPort?.none, mouse: CFMachPort?.none, loop: CFRunLoop?.none))
@@ -45,6 +57,7 @@ final class HotKeyMonitor {
     private var chorded = false
     private var shortcut = false  // kam zu einer schon gehaltenen anderen Sondertaste dazu – gar nicht beachten
     private static let escape: Int64 = 53
+    private static let returnKeys: Set<Int64> = [36, 76]  // Return und Enter auf dem Ziffernblock
 
     func start() -> Bool {
         guard !isRunning else { return true }
@@ -134,10 +147,21 @@ final class HotKeyMonitor {
 
         case .keyDown:
             let flags = event.flags
-            if keyCode == Int64(KeyLayout.v), flags.contains([.maskControl, .maskAlternate]),
-               flags.isDisjoint(with: [.maskCommand, .maskShift]) {
+            let repeating = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
+            let controlOption = flags.contains([.maskControl, .maskAlternate]) && flags.isDisjoint(with: [.maskCommand, .maskShift])
+            if keyCode == Int64(KeyLayout.v), controlOption {
                 markChord(now)
-                if event.getIntegerValueField(.keyboardEventAutorepeat) == 0 { send(.pasteLast) }
+                if !repeating { send(.pasteLast) }
+                return true
+            }
+            if keyCode == Int64(KeyLayout.n), controlOption, isMeeting {
+                markChord(now)
+                if !repeating { send(.note) }
+                return true
+            }
+            // Return gehört während der Aufnahme dem Diktat, nicht der App darunter – und zählt nicht als Tastenkürzel.
+            if Self.returnKeys.contains(keyCode), isRecording {
+                if !repeating { send(.send) }
                 return true
             }
             markChord(now)
@@ -168,10 +192,11 @@ final class HotKeyMonitor {
     }
 }
 
-/// Welche Taste im aktuellen Tastaturlayout „v“ ist (auf Dvorak z. B. nicht die übliche).
+/// Welche Tasten im aktuellen Tastaturlayout „v“ und „n“ sind (auf Dvorak z. B. nicht die üblichen).
 enum KeyLayout {
-    private static let cached = OSAllocatedUnfairLock(initialState: CGKeyCode(9))
-    static var v: CGKeyCode { cached.withLock { $0 } }
+    private static let cached = OSAllocatedUnfairLock(initialState: (v: CGKeyCode(9), n: CGKeyCode(45)))
+    static var v: CGKeyCode { cached.withLock { $0.v } }
+    static var n: CGKeyCode { cached.withLock { $0.n } }
 
     /// Auf dem Hauptthread aufrufen – die Eingabequellen-API verlangt das.
     static func startTracking() {
@@ -182,15 +207,15 @@ enum KeyLayout {
     }
 
     private static func refresh() {
-        let code = lookUp("v") ?? 9
-        cached.withLock { $0 = code }
+        let codes = (v: lookUp("v", qwerty: 9) ?? 9, n: lookUp("n", qwerty: 45) ?? 45)
+        cached.withLock { $0 = codes }
     }
 
-    private static func lookUp(_ character: Character) -> CGKeyCode? {
+    private static func lookUp(_ character: Character, qwerty: CGKeyCode) -> CGKeyCode? {
         guard let source = TISCopyCurrentKeyboardLayoutInputSource()?.takeRetainedValue() else { return nil }
         // Layouts wie „Dvorak – QWERTY ⌘“ schalten bei gedrückter ⌘-Taste auf QWERTY um.
         if let name = TISGetInputSourceProperty(source, kTISPropertyLocalizedName),
-           (Unmanaged<CFString>.fromOpaque(name).takeUnretainedValue() as String).hasSuffix("⌘") { return 9 }
+           (Unmanaged<CFString>.fromOpaque(name).takeUnretainedValue() as String).hasSuffix("⌘") { return qwerty }
         guard let data = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData) else { return nil }
         let layoutData = Unmanaged<CFData>.fromOpaque(data).takeUnretainedValue() as Data
         let target = character.utf16.first

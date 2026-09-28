@@ -3,7 +3,7 @@
 import glob, re, sys, pathlib
 root = pathlib.Path(__file__).resolve().parent.parent
 keys = []
-for f in sorted(glob.glob(str(root / "Sources/Steno/*.swift"))):
+for f in sorted(glob.glob(str(root / "Sources/Steno/**/*.swift"), recursive=True)):
     for m in re.finditer(r'\bL\("((?:[^"\\]|\\.)*)"', open(f, encoding="utf-8").read()):
         if m.group(1) not in keys:
             keys.append(m.group(1))

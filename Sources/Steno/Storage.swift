@@ -69,6 +69,12 @@ enum Settings {
         get { defaults.string(forKey: "modell") }
         set { defaults.set(newValue, forKey: "modell") }
     }
+
+    /// Ordner für die Meeting-Protokolle. Standard: „Steno Meetings“ in Dokumente.
+    static var meetingFolder: String {
+        get { defaults.string(forKey: "meetingOrdner") ?? NSHomeDirectory() + "/Documents/Steno Meetings" }
+        set { defaults.set(newValue, forKey: "meetingOrdner") }
+    }
 }
 
 // MARK: - Verlauf

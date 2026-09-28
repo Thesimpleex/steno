@@ -140,6 +140,9 @@ enum TextInsertion {
     private static var pendingRestore: DispatchWorkItem?
     private static var ownChange = -1
     private static var nextPaste = Date.distantPast
+    /// Der höchste Änderungszähler der Zwischenablage, den Steno selbst erzeugt hat (Einfügen, Zurücklegen, Kopieren).
+    /// Was darüber liegt, kam von außen – etwa ein Screenshot. Nur auf dem Hauptthread benutzen.
+    private(set) static var ownChangeCount = 0
 
     static func paste(_ text: String) {
         // Kurz nach dem letzten Einfügen warten, bis die App den Text gelesen hat – sonst bekäme sie schon den neuen.
@@ -165,6 +168,7 @@ enum TextInsertion {
         pasteboard.setData(Data(), forType: NSPasteboard.PasteboardType("org.nspasteboard.TransientType"))
         let change = pasteboard.changeCount
         ownChange = change
+        ownChangeCount = change
         nextPaste = Date.now.addingTimeInterval(0.4)
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { pressCommandV() }
@@ -173,12 +177,14 @@ enum TextInsertion {
             defer { savedClipboard = nil; pendingRestore = nil }
             guard pasteboard.changeCount == change else { return }
             pasteboard.clearContents()  // unser Diktat nicht in der Ablage liegen lassen; der alte Inhalt gilt wieder normal
+            ownChangeCount = pasteboard.changeCount
             guard let saved = savedClipboard, !saved.isEmpty else { return }
             pasteboard.writeObjects(saved.map { entries in
                 let item = NSPasteboardItem()
                 entries.forEach { item.setData($0.1, forType: $0.0) }
                 return item
             })
+            ownChangeCount = pasteboard.changeCount
         }
         pendingRestore = restore
         // Großzügig warten: langsame Apps (Electron, Remote-Desktop) lesen die Ablage erst spät.
@@ -210,6 +216,7 @@ enum TextInsertion {
     static func copy(_ text: String) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
+        ownChangeCount = NSPasteboard.general.changeCount
     }
 
     private static func pressCommandV() {

@@ -78,7 +78,7 @@ anyone for whom typing is tiring or painful – because of RSI, dyslexia, or sim
 
 ## Install
 
-You need a Mac with Apple silicon (M1 or later), macOS 14 Sonoma or later and at least 2.5 GB of free space (about
+You need a Mac with Apple silicon (M1 or later), macOS 14.2 or later and at least 2.5 GB of free space (about
 4 GB for the largest model).
 
 1. Download [`Steno.dmg`](https://github.com/Thesimpleex/steno/releases/latest/download/Steno.dmg) from the
@@ -183,4 +183,4 @@ steht dort, wo dein Cursor ist. Whisper läuft komplett auf deinem Mac: keine Cl
 [Releases](../../releases/latest) laden, Steno in „Programme“ ziehen, öffnen. macOS blockiert den ersten Start, weil
 die App ohne kostenpflichtiges Apple-Entwicklerkonto verteilt wird: Meldung schließen, dann unter
 **Systemeinstellungen › Datenschutz & Sicherheit** auf **Dennoch öffnen** klicken. Den Rest erledigt der Assistent.
-Voraussetzung: Mac mit Apple-Chip (M1 oder neuer) und macOS 14 oder neuer.
+Voraussetzung: Mac mit Apple-Chip (M1 oder neuer) und macOS 14.2 oder neuer.

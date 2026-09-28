@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "Steno",
-    platforms: [.macOS(.v14)],
+    platforms: [.macOS("14.2")],  // ab 14.2 kann eine App den Ton des Macs mithören
     targets: [
         // Offizielle whisper.cpp-Bibliothek (Build b5130 = v1.9.4) mit Metal-Unterstützung.
         .binaryTarget(

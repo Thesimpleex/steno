@@ -8,6 +8,10 @@ final class Microphone {
 
     /// Pegel 0…1 für die Anzeige – kommt auf dem Audio-Thread.
     var onLevel: ((Float) -> Void)?
+    /// Jeder neue Abschnitt, schon im Whisper-Format – kommt auf dem Audio-Thread.
+    var onSamples: (([Float]) -> Void)?
+    /// Aus: Die Aufnahme wird nicht gesammelt, weil sie stückweise über `onSamples` weiterläuft (Meetings).
+    var accumulates = true
 
     private var engine: AVAudioEngine?
     private var samples: [Float] = []
@@ -37,7 +41,8 @@ final class Microphone {
             guard let self else { return }
             self.onLevel?(Self.level(of: buffer))
             if let converted = Self.convert(buffer, with: converter) {
-                self.lock.withLock { self.samples.append(contentsOf: converted) }
+                if self.accumulates { self.lock.withLock { self.samples.append(contentsOf: converted) } }
+                self.onSamples?(converted)
             }
         }
         try engine.start()
@@ -83,7 +88,8 @@ final class Microphone {
         return min(1, rms * 12)
     }
 
-    private static func convert(_ buffer: AVAudioPCMBuffer, with converter: AVAudioConverter) -> [Float]? {
+    /// Bringt einen Puffer in das Whisper-Format; auch die Quelle für den Mac-Ton nutzt das.
+    static func convert(_ buffer: AVAudioPCMBuffer, with converter: AVAudioConverter) -> [Float]? {
         let capacity = AVAudioFrameCount(Double(buffer.frameLength) * format.sampleRate / buffer.format.sampleRate) + 64
         guard let output = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: capacity) else { return nil }
         var delivered = false
