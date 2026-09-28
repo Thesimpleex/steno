@@ -32,8 +32,12 @@ enum TextInsertion {
     /// Fragt im Hintergrund, wohin ein Text ginge. Die Antwort kommt auf dem Hauptthread, in der Reihenfolge der
     /// Fragen. Ohne `probe` wird nichts gefragt, die Reihenfolge gilt trotzdem.
     static func inspect(probe: Bool = true, then done: @escaping (Target) -> Void) {
-        // Eine Passworteingabe hat die sichere Tastatureingabe an: dann nie einfügen.
-        let app = probe && !IsSecureEventInputEnabled() ? NSWorkspace.shared.frontmostApplication : nil
+        var app: NSRunningApplication?
+        // Bei sicherer Tastatureingabe (Passwortfeld, Terminal) nie einfügen.
+        if probe, !IsSecureEventInputEnabled() {
+            // Ein eigenes Feld zuerst: Das Notizfeld hat die Tastatur, auch wenn macOS Steno dafür nicht nach vorn lässt.
+            app = ownField != nil ? .current : NSWorkspace.shared.frontmostApplication
+        }
         // Bedienungshilfen-Abfragen an sich selbst würden den Hauptthread blockieren – dort direkt nachsehen.
         let own = app == .current
         queue.async {
@@ -78,9 +82,15 @@ enum TextInsertion {
         return status == .success ? result as? String : nil
     }
 
+    /// Das Textfeld in Steno, das gerade die Tastatur hat. Nur auf dem Hauptthread.
+    private static var ownField: NSTextView? {
+        guard let view = NSApp.keyWindow?.firstResponder as? NSTextView, view.isEditable else { return nil }
+        return view
+    }
+
     /// Ein Textfeld in Steno selbst. Nur auf dem Hauptthread.
     private static var ownTarget: Target {
-        guard let view = NSApp.keyWindow?.firstResponder as? NSTextView, view.isEditable else { return Target() }
+        guard let view = ownField else { return Target() }
         let location = view.selectedRange().location
         guard location > 0, location <= view.string.utf16.count else { return Target(canType: true, characterBefore: "") }
         return Target(canType: true,

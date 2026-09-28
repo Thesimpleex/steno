@@ -3,8 +3,8 @@ import AppKit
 /// Das kleine Notizfeld für laufende Meetings (⌃⌥N): Return legt die Eingabe in die Zeitleiste – leer als Markierung,
 /// mit „!“ am Anfang als Aufgabe –, Esc schließt, ohne etwas zu speichern.
 ///
-/// Steno wird dafür kurz zur vordersten App: Nur dann diktiert man in dieses Feld statt in die App darunter.
-/// Beim Schließen bekommt die App davor den Fokus zurück.
+/// Das Feld bekommt die Tastatur, auch wenn macOS Steno auf ein Kürzel hin nicht nach vorn lässt; auch Diktate landen
+/// dann darin. Beim Schließen bekommt die App davor den Fokus zurück.
 final class QuickNote: NSObject, NSTextFieldDelegate, NSWindowDelegate {
     private static let size = NSSize(width: 480, height: 74)
 
