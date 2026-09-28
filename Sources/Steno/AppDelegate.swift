@@ -84,6 +84,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         dictation.hotKey = state.hotKey
         dictation.overlay.style = state.overlayStyle
+        dictation.warmUp()
         state.onOverlayChanged = { [dictation] in
             dictation.overlay.style = $0
             dictation.overlay.preview()

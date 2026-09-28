@@ -98,6 +98,8 @@ final class HistoryStore: ObservableObject {
     }
     /// Verlauf gelöscht – dann soll auch sonst nichts mehr vom letzten Diktat übrig sein.
     var onCleared: (() -> Void)?
+    /// Schreibt die Datei der Reihe nach, damit der Hauptthread nach einem Diktat nicht darauf wartet.
+    private let writer = DispatchQueue(label: "steno.history", qos: .utility)
 
     private init() {
         let decoder = JSONDecoder()
@@ -138,14 +140,22 @@ final class HistoryStore: ObservableObject {
         return entries.count != count
     }
 
+    /// Wartet, bis alles geschrieben ist – vor dem Beenden, damit auch ein gerade gelöschter Verlauf weg ist.
+    func flush() {
+        writer.sync {}
+    }
+
     private func save() {
-        guard !entries.isEmpty else {
-            try? FileManager.default.removeItem(at: Paths.history)
-            return
+        let entries = self.entries
+        writer.async {
+            guard !entries.isEmpty else {
+                try? FileManager.default.removeItem(at: Paths.history)
+                return
+            }
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            try? encoder.encode(entries).write(to: Paths.history, options: .atomic)
         }
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        try? encoder.encode(entries).write(to: Paths.history, options: .atomic)
     }
 }
 

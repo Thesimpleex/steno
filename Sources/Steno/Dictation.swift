@@ -58,6 +58,9 @@ final class Dictation {
     /// Umwandlungen, deren Ergebnis noch aussteht – solange zeigt die Anzeige „arbeitet“ statt zu verschwinden.
     private var working = 0
     private var lastSecureNotice = Date.distantPast
+    /// Die Nachbearbeitung fragt die Rechtschreibprüfung und gehört nicht auf den Hauptthread. Seriell, damit die
+    /// Ergebnisse in ihrer Reihenfolge bleiben.
+    private let cleanup = DispatchQueue(label: "steno.cleanup", qos: .userInitiated)
 
     private enum Timing {
         static let holdDelay = 0.15        // so lange warten, damit ⌥L (@) & Co. kein Diktat starten
@@ -87,6 +90,12 @@ final class Dictation {
         #if DEBUG
         Latency.watchMainThread()
         #endif
+    }
+
+    /// Beim Start einmal anlegen, was das erste Diktat sonst aufhalten würde.
+    func warmUp() {
+        // Die Rechtschreibprüfung muss auf dem Hauptthread entstehen – ihr erster Aufruf im Hintergrund kann hängen.
+        _ = NSSpellChecker.shared
     }
 
     func handle(_ event: HotKeyMonitor.Event) {
@@ -121,6 +130,7 @@ final class Dictation {
         if mode != .idle { _ = stopRecording() }
         media.resumeNow()
         transcriber?.close()
+        HistoryStore.shared.flush()
     }
 
     // MARK: Tasten
@@ -369,16 +379,24 @@ final class Dictation {
         let vocabulary = DictionaryStore.shared.vocabulary
         let language = SpeechLanguage.current
         transcriber.transcribe(samples, prompt: vocabulary.whisperPrompt, language: language.whisperCode,
-                               cancellation: cancellation) { raw in
-            DispatchQueue.main.async {
-                then(TextCleanup.apply(raw, vocabulary, language: language.whisperCode, swiss: language == .swissGerman))
+                               cancellation: cancellation) { [cleanup] raw in
+            cleanup.async {
+                let text = TextCleanup.apply(raw, vocabulary, language: language.whisperCode, swiss: language == .swissGerman)
+                DispatchQueue.main.async { then(text) }
             }
         }
     }
 
     // MARK: Ergebnis
 
+    /// Wohin der Text geht, klären die Bedienungshilfen im Hintergrund; entschieden wird erst mit ihrer Antwort.
     private func deliver(_ result: String) {
+        TextInsertion.inspect(probe: Settings.autoInsert) { [weak self] target in
+            self?.deliver(result, to: target)
+        }
+    }
+
+    private func deliver(_ result: String, to target: TextInsertion.Target) {
         #if DEBUG
         Latency.mark("Ergebnis")
         #endif
@@ -396,9 +414,9 @@ final class Dictation {
         lastText = text
         // Ein zurückgehaltenes Ergebnis steht schon im Verlauf – nur das neue dazu.
         if !result.isEmpty { HistoryStore.shared.add(result) }
-        if Settings.autoInsert, TextInsertion.canType() {
+        if target.canType {  // nur gefragt, wenn eingefügt werden soll
             if !recordingAgain { working > 0 ? overlay.showWorking() : overlay.hide() }
-            insert(text)
+            insert(text, at: target)
         } else if recordingAgain {
             // Nicht verlieren: in die Zwischenablage und nach der laufenden Aufnahme zeigen.
             TextInsertion.copy(text)
@@ -416,15 +434,17 @@ final class Dictation {
         guard let text = lastText ?? HistoryStore.shared.entries.first?.text else {
             return overlay.showMessage(L("Noch kein Diktat im Verlauf"), seconds: 1.5)
         }
-        if TextInsertion.canType() { insert(text) } else { overlay.showResult(text) }
+        TextInsertion.inspect { [weak self] target in
+            if target.canType { self?.insert(text, at: target) } else { self?.overlay.showResult(text) }
+        }
     }
 
     /// Mit Leerzeichen davor, wenn direkt vor dem Cursor schon Text steht. Lässt sich das Zeichen
     /// nicht lesen (Terminal), zählt: gerade eben schon in dieselbe App diktiert.
-    private func insert(_ text: String) {
+    private func insert(_ text: String, at target: TextInsertion.Target) {
         let app = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
         let needsSpace: Bool
-        if let before = TextInsertion.characterBeforeCursor() {
+        if let before = target.characterBefore {
             needsSpace = before.last.map { !$0.isWhitespace && !"([{„‚»/".contains($0) } ?? false
         } else if let last = lastInsertion {
             needsSpace = last.app == app && Date.now.timeIntervalSince(last.date) < 120

@@ -19,21 +19,43 @@ enum TextInsertion {
 
     // MARK: Wohin geht der Text?
 
-    /// Steht der Cursor in einem Feld, in das man tippen kann?
-    static func canType() -> Bool {
+    struct Target {
+        /// Steht der Cursor in einem Feld, in das man tippen kann?
+        var canType = false
+        /// Das Zeichen direkt vor dem Cursor: "" am Feldanfang, nil wenn nicht lesbar (z. B. im Terminal).
+        var characterBefore: String?
+    }
+
+    /// Die Bedienungshilfen warten auf eine hängende App bis zu einer Sekunde – deshalb eine eigene Queue.
+    private static let queue = DispatchQueue(label: "steno.insertion", qos: .userInitiated)
+
+    /// Fragt im Hintergrund, wohin ein Text ginge. Die Antwort kommt auf dem Hauptthread, in der Reihenfolge der
+    /// Fragen. Ohne `probe` wird nichts gefragt, die Reihenfolge gilt trotzdem.
+    static func inspect(probe: Bool = true, then done: @escaping (Target) -> Void) {
         // Eine Passworteingabe hat die sichere Tastatureingabe an: dann nie einfügen.
-        guard !IsSecureEventInputEnabled() else { return false }
-        guard let app = NSWorkspace.shared.frontmostApplication else { return false }
-        if app == .current { return ownTextView != nil }
-        if let id = app.bundleIdentifier, typingApps.contains(id) || id.hasPrefix("com.jetbrains.") { return true }
-        let field: AXUIElement
+        let app = probe && !IsSecureEventInputEnabled() ? NSWorkspace.shared.frontmostApplication : nil
+        // Bedienungshilfen-Abfragen an sich selbst würden den Hauptthread blockieren – dort direkt nachsehen.
+        let own = app == .current
+        queue.async {
+            let other = own ? nil : app.map(target(of:))
+            DispatchQueue.main.async { done(own ? ownTarget : other ?? Target()) }
+        }
+    }
+
+    private static func target(of app: NSRunningApplication) -> Target {
+        let typing = app.bundleIdentifier.map { typingApps.contains($0) || $0.hasPrefix("com.jetbrains.") } ?? false
         switch focus(in: app) {
-        case .field(let element): field = element
-        case .nothing: return false
+        case .field(let field):
+            guard typing || accepts(field) else { return Target() }
+            return Target(canType: true, characterBefore: characterBefore(in: field))
+        case .nothing: return Target(canType: typing)
         // Die App gibt keine Auskunft (hängt kurz, oder macOS kennt ihren Prozess gerade nicht):
         // dann trotzdem einfügen – das Diktat soll dort landen, wo der Cursor steht.
-        case .unknown: return true
+        case .unknown: return Target(canType: true)
         }
+    }
+
+    private static func accepts(_ field: AXUIElement) -> Bool {
         // Nie in Passwortfelder schreiben.
         if attribute(field, kAXSubroleAttribute) as? String == "AXSecureTextField" { return false }
         let role = attribute(field, kAXRoleAttribute) as? String ?? ""
@@ -42,18 +64,8 @@ enum TextInsertion {
         return isSettable(field, kAXSelectedTextRangeAttribute) || isSettable(field, kAXValueAttribute)
     }
 
-    /// Das Zeichen direkt vor dem Cursor: "" am Feldanfang, nil wenn nicht lesbar (z. B. im Terminal).
-    static func characterBeforeCursor() -> String? {
-        guard let app = NSWorkspace.shared.frontmostApplication else { return nil }
-        if app == .current {
-            // Bedienungshilfen-Abfragen an sich selbst würden den Hauptthread blockieren – direkt nachsehen.
-            guard let view = ownTextView else { return nil }
-            let location = view.selectedRange().location
-            guard location > 0, location <= view.string.utf16.count else { return "" }
-            return (view.string as NSString).substring(with: NSRange(location: location - 1, length: 1))
-        }
-        guard case .field(let field) = focus(in: app),
-              let value = attribute(field, kAXSelectedTextRangeAttribute), CFGetTypeID(value) == AXValueGetTypeID()
+    private static func characterBefore(in field: AXUIElement) -> String? {
+        guard let value = attribute(field, kAXSelectedTextRangeAttribute), CFGetTypeID(value) == AXValueGetTypeID()
         else { return nil }
         var selection = CFRange()
         guard AXValueGetValue(value as! AXValue, .cfRange, &selection) else { return nil }
@@ -66,9 +78,13 @@ enum TextInsertion {
         return status == .success ? result as? String : nil
     }
 
-    private static var ownTextView: NSTextView? {
-        guard let view = NSApp.keyWindow?.firstResponder as? NSTextView, view.isEditable else { return nil }
-        return view
+    /// Ein Textfeld in Steno selbst. Nur auf dem Hauptthread.
+    private static var ownTarget: Target {
+        guard let view = NSApp.keyWindow?.firstResponder as? NSTextView, view.isEditable else { return Target() }
+        let location = view.selectedRange().location
+        guard location > 0, location <= view.string.utf16.count else { return Target(canType: true, characterBefore: "") }
+        return Target(canType: true,
+                      characterBefore: (view.string as NSString).substring(with: NSRange(location: location - 1, length: 1)))
     }
 
     /// Hängt eine App, sollen Abfragen an sie Steno nicht mitreißen.
