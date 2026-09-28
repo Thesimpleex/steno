@@ -1,6 +1,7 @@
 import AppKit
 import AVFoundation
 import CoreAudio
+import os
 
 /// Der Ton des Macs (Teams, Zoom, Browser …) als Tonquelle für Meetings.
 ///
@@ -10,6 +11,7 @@ import CoreAudio
 final class SystemAudio: AudioSource {
     var onSamples: (([Float]) -> Void)?
     var onLevel: ((Float) -> Void)?
+    var lacksPermission: Bool { permission.withLock { $0 } }
 
     /// Ein Prozess, der gerade mit Core Audio verbunden ist.
     typealias Client = (id: AudioObjectID, pid: pid_t, bundleID: String)
@@ -23,6 +25,7 @@ final class SystemAudio: AudioSource {
     private let control = DispatchQueue(label: "steno.systemaudio")
     private let io = DispatchQueue(label: "steno.systemaudio.io", qos: .userInitiated)
     private let workspace = NSWorkspace.shared.notificationCenter
+    private let permission = OSAllocatedUnfairLock(initialState: false)  // fehlt die Freigabe?
     // Nur auf `control` benutzt:
     private var active = false
     private let observers = Teardown()  // Wechsel des Ausgabegeräts, Aufwachen
@@ -42,7 +45,8 @@ final class SystemAudio: AudioSource {
         }
     }
 
-    /// Beim ersten Mal fragt macOS nach der Freigabe; bis zur Antwort kehrt `start()` nicht zurück.
+    /// Beim ersten Mal fragt macOS nach der Freigabe, ohne auf die Antwort zu warten. Bis sie kommt, läuft der
+    /// Abgriff trotzdem und liefert Stille – `lacksPermission` sagt so lange Bescheid.
     func start() throws {
         try control.sync {
             guard !active else { return }
@@ -64,6 +68,7 @@ final class SystemAudio: AudioSource {
         rebuild?.cancel()
         observers.run()
         capture.run()
+        permission.withLock { $0 = false }
     }
 
     /// Legt Abgriff, Sammelgerät und Callback an und startet sie. Scheitert ein Schritt, wird der Rest wieder abgebaut.
@@ -109,8 +114,21 @@ final class SystemAudio: AudioSource {
             capture.add { AudioDeviceStop(device, proc) }
 
             // Ohne Freigabe liefert der Abgriff Stille statt eines Fehlers. Seine Beschreibung neu zu setzen,
-            // lehnt Core Audio dann aber ab – die einzige öffentliche Auskunft über die Freigabe.
-            if Self.apply(description, to: tap) == kAudioDevicePermissionsError { throw MeetingError.systemAudioDenied }
+            // lehnt Core Audio dann aber ab – die einzige öffentliche Auskunft über die Freigabe. Beim ersten Mal
+            // steht die Frage von macOS da noch offen: Also weiterlaufen und jede Sekunde nachsehen, bis der Ton kommt.
+            let denied = Self.apply(description, to: tap) == kAudioDevicePermissionsError
+            permission.withLock { $0 = denied }
+            if denied {
+                let poll = DispatchSource.makeTimerSource(queue: control)
+                poll.schedule(deadline: .now() + 1, repeating: 1)
+                poll.setEventHandler { [weak self, weak poll] in
+                    guard Self.apply(description, to: tap) != kAudioDevicePermissionsError else { return }
+                    self?.permission.withLock { $0 = false }
+                    poll?.cancel()
+                }
+                poll.resume()
+                capture.add { poll.cancel() }
+            }
 
             // AirPods wechseln beim Telefonieren ihr Format, ohne dass sich das Ausgabegerät ändert.
             if let output = try? Self.read(Self.system, kAudioHardwarePropertyDefaultOutputDevice, AudioObjectID(kAudioObjectUnknown)) {

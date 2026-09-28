@@ -62,6 +62,14 @@ final class SystemAudioTests: XCTestCase {
         audio.stopCapture()
     }
 
+    func testLacksNoPermissionWhileStopped() {
+        let audio = SystemAudio()
+        XCTAssertFalse(audio.lacksPermission)
+        audio.stopCapture()
+        XCTAssertFalse(audio.lacksPermission)
+        XCTAssertFalse((Microphone() as AudioSource).lacksPermission, "Vorgabe fürs Mikrofon")
+    }
+
     func testExcludesStenoAndMusicWithTheirHelpers() {
         let clients: [SystemAudio.Client] = [
             (1, 100, "com.microsoft.teams2"),

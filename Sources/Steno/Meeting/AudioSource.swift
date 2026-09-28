@@ -6,8 +6,14 @@ protocol AudioSource: AnyObject {
     var onSamples: (([Float]) -> Void)? { get set }
     /// Pegel 0…1 für die Anzeige, ebenfalls auf einem Audio-Thread.
     var onLevel: ((Float) -> Void)? { get set }
+    /// Wahr, solange die Quelle läuft, das System sie aber (noch) nichts hören lässt. Von jedem Thread lesbar.
+    var lacksPermission: Bool { get }
     func start() throws
     func stopCapture()
+}
+
+extension AudioSource {
+    var lacksPermission: Bool { false }
 }
 
 extension Microphone: AudioSource {
