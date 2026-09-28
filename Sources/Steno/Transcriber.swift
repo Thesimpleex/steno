@@ -6,6 +6,10 @@ import whisper
 /// deshalb läuft jeder Aufruf auf derselben seriellen Queue.
 final class Transcriber {
     private let queue = DispatchQueue(label: "steno.transcriber", qos: .userInitiated)
+    /// Meeting-Abschnitte stehen hier an – so liegt immer höchstens einer vor einem Diktat auf `queue`.
+    private let background = DispatchQueue(label: "steno.transcriber.background", qos: .utility)
+    /// Diktate, die anstehen oder laufen. Solange es eins gibt, fängt kein Meeting-Abschnitt an.
+    private let dictations = DispatchGroup()
     private var context: OpaquePointer?
     private let voiceDetector: String?
     private let threads = Int32(max(2, min(8, ProcessInfo.processInfo.activeProcessorCount - 2)))
@@ -29,9 +33,24 @@ final class Transcriber {
     /// `cancellation`: wird sie ausgelöst, bevor die Umwandlung an der Reihe ist, entfällt sie („“ als Ergebnis).
     func transcribe(_ samples: [Float], prompt: String, language: String, cancellation: Cancellation? = nil,
                     completion: @escaping (String) -> Void) {
+        dictations.enter()
         queue.async {
+            defer { self.dictations.leave() }
             guard cancellation?.isCancelled != true else { return completion("") }
             completion(self.run(samples, prompt: prompt, language: language, detectSpeech: true))
+        }
+    }
+
+    /// Für Meetings. Ein Diktat geht immer vor: Der Abschnitt fängt erst an, wenn keins mehr ansteht – und weil
+    /// Abschnitte höchstens 20 s lang sind, wartet ein Diktat höchstens auf einen. Das Ergebnis kommt auf einer
+    /// Hintergrund-Queue; nil heißt, das Modell wurde vorher geschlossen (Modellwechsel).
+    func transcribeBackground(_ samples: [Float], prompt: String, language: String,
+                              completion: @escaping (String?) -> Void) {
+        background.async {
+            self.dictations.wait()
+            completion(self.queue.sync {
+                self.context == nil ? nil : self.run(samples, prompt: prompt, language: language, detectSpeech: true)
+            })
         }
     }
 
