@@ -56,6 +56,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var permissionTimer: Timer?
     private var meetingClock: Timer?
     private var askedForAccessibility = false
+    /// Ohne Fenster legt macOS Steno sonst schlafen (App Nap), und Taste und Anzeige reagieren verzögert.
+    private let noNap = ProcessInfo.processInfo.beginActivity(options: .userInitiatedAllowingIdleSystemSleep,
+                                                              reason: "Steno wartet auf die Diktier-Taste")
 
     /// Lädt Modelle nacheinander. Beim Beenden wird hier gewartet, damit ein halb geladenes Modell sauber schließt.
     private let loader = DispatchQueue(label: "steno.loader")
