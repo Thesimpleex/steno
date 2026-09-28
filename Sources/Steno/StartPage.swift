@@ -80,7 +80,8 @@ struct StartPage: View {
     private var tip: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Image(systemName: "info.circle").font(.system(size: 12))
-            Text(L("⌘Q schließt nur das Fenster, ⌥⌘Q beendet Steno.")).fixedSize(horizontal: false, vertical: true)
+            Text(L("Return während der Aufnahme schickt den Text nach dem Einfügen gleich ab. ⌘Q schließt nur das Fenster, ⌥⌘Q beendet Steno."))
+                .fixedSize(horizontal: false, vertical: true)
         }
         .font(.system(size: 12))
         .foregroundStyle(.secondary)
