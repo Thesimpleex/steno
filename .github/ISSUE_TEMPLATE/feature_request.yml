@@ -1,0 +1,18 @@
+name: Feature request
+description: An idea that would make Steno more useful
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What would you like to do?
+      description: Describe the situation – what you are trying to achieve and what gets in the way today.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: How could Steno help?
+  - type: markdown
+    attributes:
+      value: Steno aims to stay small, private and dependency-free. Ideas that keep it that way are the easiest to adopt.

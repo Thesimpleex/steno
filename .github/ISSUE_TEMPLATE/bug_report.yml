@@ -1,0 +1,53 @@
+name: Bug report
+description: Something doesn't work as expected
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! Many setup questions are answered in the [FAQ](https://www.majores.store/#faq).
+        Please don't paste dictations or anything else you want to keep private.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Steno version
+      description: Menu bar icon › About Steno
+      placeholder: "1.0"
+    validations:
+      required: true
+  - type: input
+    id: mac
+    attributes:
+      label: Mac and macOS version
+      placeholder: "MacBook Air M1, macOS 15.3"
+    validations:
+      required: true
+  - type: dropdown
+    id: key
+    attributes:
+      label: Dictation key
+      options:
+        - Left Option ⌥
+        - Right Option ⌥
+        - Right Command ⌘
+        - Left Control ⌃
+        - Right Control ⌃
+        - Right Shift ⇧
+        - Globe / fn
+  - type: input
+    id: app
+    attributes:
+      label: App you dictated into
+      placeholder: "Safari, Slack, Terminal, VS Code …"
+  - type: textarea
+    id: more
+    attributes:
+      label: Anything else?
+      description: Screenshots or steps to reproduce help a lot.

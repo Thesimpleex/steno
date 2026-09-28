@@ -1,0 +1,3 @@
+"NSMicrophoneUsageDescription" = "Steno n’enregistre votre voix que pendant la dictée. Tout reste sur ce Mac.";
+"NSAppleEventsUsageDescription" = "Steno met Spotify et Apple Music en pause pendant la dictée, puis les relance.";
+"NSHumanReadableCopyright" = "© 2026 Thesimpleex · Licence MIT";

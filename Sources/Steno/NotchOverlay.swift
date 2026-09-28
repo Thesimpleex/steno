@@ -1,0 +1,509 @@
+import AppKit
+import SwiftUI
+
+/// Wie die Aufnahme angezeigt wird. Automatisch: an der Notch, wenn der Bildschirm eine hat, sonst als Blase.
+enum OverlayStyle: String, CaseIterable, Identifiable {
+    case automatic, notch, bubble
+
+    var id: String { rawValue }
+
+    var name: String {
+        switch self {
+        case .automatic: return L("Automatisch")
+        case .notch: return L("An der Notch")
+        case .bubble: return L("Blase")
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .automatic: return L("An der Notch, wenn dein Bildschirm eine hat – sonst als Blase unten.")
+        case .notch: return L("Wächst aus der Notch – ohne Notch vom oberen Bildschirmrand.")
+        case .bubble: return L("Schwebt unten in der Mitte über dem Dock.")
+        }
+    }
+}
+
+/// Die schwarze Anzeige: wächst aus der Notch heraus oder schwebt als Blase über dem Dock.
+final class NotchOverlay {
+    let model = OverlayModel()
+    var style = OverlayStyle.automatic
+    private let panel: NSPanel
+    private var hideWork: DispatchWorkItem?
+    private var generation = 0  // jede neue Anzeige macht ältere, noch ausstehende Animationen ungültig
+    private var mouseTimer: Timer?
+    private var previewTimer: Timer?
+    private var hovering = false
+    private static let canvas = CGSize(width: 700, height: 240)
+    /// Abstand der Blase zum unteren Rand des Fensters – Platz für ihren Schatten.
+    static let bubbleInset: CGFloat = 16
+
+    init() {
+        panel = EdgePanel(contentRect: NSRect(origin: .zero, size: Self.canvas),
+                          styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
+        panel.level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 2)  // über der Menüleiste
+        panel.backgroundColor = .clear
+        panel.isOpaque = false
+        panel.hasShadow = false
+        panel.hidesOnDeactivate = false
+        panel.ignoresMouseEvents = true
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
+        let host = FirstClickHostingView(rootView: OverlayView(model: model, overlay: nil))
+        panel.contentView = host
+        host.rootView = OverlayView(model: model, overlay: self)
+    }
+
+    func showRecording(handsFree: Bool, since start: Date = .now) {
+        model.startedAt = start
+        model.levels = Array(repeating: 0, count: model.levels.count)
+        show(.recording(handsFree: handsFree))
+    }
+
+    func showWorking() { show(.working) }
+
+    func showResult(_ text: String, copied: Bool = false) {
+        model.copied = copied
+        show(.result(text))
+        hide(after: 15)
+    }
+
+    func showMessage(_ text: String, seconds: Double = 2.5) {
+        show(.message(text))
+        hide(after: seconds)
+        announce(text)
+    }
+
+    /// VoiceOver liest Meldungen der Anzeige vor.
+    private func announce(_ text: String) {
+        NSAccessibility.post(element: NSApp as Any, notification: .announcementRequested,
+                             userInfo: [.announcement: text, .priority: NSAccessibilityPriorityLevel.high.rawValue])
+    }
+
+    /// Kurze Vorführung mit erfundenem Pegel – für die Auswahl in den Einstellungen.
+    func preview() {
+        switch model.state {
+        case .hidden, .message: break
+        case .recording where previewTimer != nil: break
+        default: return  // nie über eine echte Aufnahme oder ein Ergebnis legen
+        }
+        showRecording(handsFree: false)
+        var tick = 0
+        previewTimer = Timer.scheduledTimer(withTimeInterval: 0.06, repeats: true) { [weak self] timer in
+            tick += 1
+            self?.model.push(level: Float(0.25 + 0.55 * abs(sin(Double(tick) * 0.45)) * abs(cos(Double(tick) * 0.17))))
+            if tick >= 45 {
+                timer.invalidate()
+                self?.hide()
+            }
+        }
+    }
+
+    var isShowingRecording: Bool {
+        if case .recording = model.state { return true }
+        return false
+    }
+
+    func hide() {
+        hideWork?.cancel()
+        stopPreview()
+        generation += 1
+        stopMouseTracking()
+        guard model.state != .hidden || panel.isVisible else { return }
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.9)) { model.state = .hidden }
+        let work = DispatchWorkItem { [weak self] in
+            if self?.model.state == .hidden { self?.panel.orderOut(nil) }
+        }
+        hideWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: work)
+    }
+
+    fileprivate func copyResult() {
+        guard case .result(let text) = model.state else { return }
+        TextInsertion.copy(text)
+        model.copied = true
+        hide(after: 0.9)
+    }
+
+    private func show(_ state: OverlayModel.State) {
+        hideWork?.cancel()
+        stopPreview()  // eine echte Aufnahme beendet die Vorführung, ohne selbst ausgeblendet zu werden
+        generation += 1
+        let current = generation
+        let screen = NSScreen.screens.first { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) } ?? NSScreen.main
+        guard let screen else { return }
+        let geometry = NotchGeometry(screen, style: style)
+        if model.state == .hidden || !panel.isVisible || geometry != model.geometry {
+            model.geometry = geometry
+            model.state = .hidden  // aus der Ausgangsgröße aufziehen
+            let origin = geometry.bubble
+                ? CGPoint(x: geometry.centerX - Self.canvas.width / 2, y: geometry.floor + 4)
+                : CGPoint(x: geometry.centerX - Self.canvas.width / 2, y: screen.frame.maxY - Self.canvas.height)
+            panel.setFrame(NSRect(origin: origin, size: Self.canvas), display: false)
+            panel.orderFrontRegardless()
+        }
+        DispatchQueue.main.async {
+            guard self.generation == current else { return }
+            withAnimation(.spring(response: 0.38, dampingFraction: 0.78)) { self.model.state = state }
+        }
+        if case .result = state { startMouseTracking() } else { stopMouseTracking() }
+    }
+
+    private func stopPreview() {
+        previewTimer?.invalidate()
+        previewTimer = nil
+    }
+
+    private func hide(after seconds: Double) {
+        hideWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.hide() }
+        hideWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: work)
+    }
+
+    /// Die schwarze Fläche auf dem Bildschirm – nur dort nimmt das Fenster Klicks an.
+    private var activeArea: NSRect {
+        let size = model.geometry.size(for: model.state)
+        let frame = panel.frame
+        let y = model.geometry.bubble ? frame.minY + Self.bubbleInset : frame.maxY - size.height
+        return NSRect(x: frame.midX - size.width / 2, y: y, width: size.width, height: size.height)
+    }
+
+    /// Das Fenster ist größer als die schwarze Fläche. Klicks nimmt es nur dort an, wo die Fläche ist –
+    /// daneben bleibt alles darunter bedienbar. Solange die Maus darauf ist, bleibt das Ergebnis stehen.
+    private func startMouseTracking() {
+        mouseTimer?.invalidate()
+        mouseTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            let inside = self.activeArea.contains(NSEvent.mouseLocation)
+            if self.panel.ignoresMouseEvents == inside { self.panel.ignoresMouseEvents = !inside }
+            guard inside != self.hovering else { return }
+            self.hovering = inside
+            if !self.model.copied {
+                if inside { self.hideWork?.cancel() } else { self.hide(after: 5) }
+            }
+        }
+        mouseTimer?.tolerance = 0.02
+    }
+
+    private func stopMouseTracking() {
+        mouseTimer?.invalidate()
+        mouseTimer = nil
+        hovering = false
+        panel.ignoresMouseEvents = true
+    }
+}
+
+final class OverlayModel: ObservableObject {
+    enum State: Equatable {
+        case hidden
+        case recording(handsFree: Bool)
+        case working
+        case result(String)
+        case message(String)
+    }
+
+    @Published var state = State.hidden
+    @Published var levels = [CGFloat](repeating: 0, count: 16)
+    @Published var copied = false
+    @Published var startedAt = Date.now
+    @Published var geometry = NotchGeometry(nil)
+
+    func push(level: Float) {
+        levels.removeFirst()
+        levels.append(CGFloat(level))
+    }
+}
+
+struct NotchGeometry: Equatable {
+    var hasNotch = false
+    var notchWidth: CGFloat = 0
+    var barHeight: CGFloat = 32  // Höhe der Notch bzw. der Menüleiste
+    var centerX: CGFloat = 0
+    /// Als Blase über dem Dock statt oben an der Notch.
+    var bubble = false
+    /// Unterkante des nutzbaren Bereichs (über dem Dock).
+    var floor: CGFloat = 0
+
+    init(_ screen: NSScreen?, style: OverlayStyle = .automatic) {
+        guard let screen else { return }
+        if screen.safeAreaInsets.top > 0, let left = screen.auxiliaryTopLeftArea, let right = screen.auxiliaryTopRightArea {
+            hasNotch = true
+            notchWidth = right.minX - left.maxX
+            barHeight = screen.safeAreaInsets.top
+            centerX = (left.maxX + right.minX) / 2
+        } else {
+            barHeight = max(28, screen.frame.maxY - screen.visibleFrame.maxY)
+            centerX = screen.frame.midX
+        }
+        bubble = style == .bubble || (style == .automatic && !hasNotch)
+        if bubble {
+            centerX = screen.visibleFrame.midX
+            floor = screen.visibleFrame.minY
+        }
+    }
+
+    func size(for state: OverlayModel.State) -> CGSize {
+        if bubble {
+            switch state {
+            case .hidden: return CGSize(width: 150, height: 40)
+            case .recording, .working: return CGSize(width: 196, height: 40)
+            case .message: return CGSize(width: 380, height: 54)
+            case .result: return CGSize(width: 500, height: 92)
+            }
+        }
+        let compact = CGSize(width: (hasNotch ? notchWidth : 70) + 2 * 78 + 2 * NotchShape.ear, height: barHeight)
+        switch state {
+        case .hidden: return hasNotch ? CGSize(width: notchWidth, height: barHeight) : CGSize(width: compact.width, height: 0)
+        case .recording, .working: return compact
+        case .message: return CGSize(width: max(compact.width, 380), height: barHeight + 52)
+        case .result: return CGSize(width: max(compact.width, 460), height: barHeight + 92)
+        }
+    }
+}
+
+/// Darf über die Menüleiste bis an den Bildschirmrand.
+private final class EdgePanel: NSPanel {
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect { frameRect }
+    override var canBecomeKey: Bool { false }
+}
+
+/// Der Kopieren-Knopf reagiert schon beim ersten Klick, ohne Steno nach vorn zu holen.
+private final class FirstClickHostingView<Content: View>: NSHostingView<Content> {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+}
+
+// MARK: - Form
+
+/// Schwarze Fläche mit nach außen gebogenen oberen Ecken – dadurch wirkt sie wie aus der Notch gewachsen.
+struct NotchShape: Shape {
+    static let ear: CGFloat = 9
+    var width: CGFloat
+    var height: CGFloat
+    var cornerRadius: CGFloat
+
+    var animatableData: AnimatablePair<AnimatablePair<CGFloat, CGFloat>, CGFloat> {
+        get { AnimatablePair(AnimatablePair(width, height), cornerRadius) }
+        set { (width, height, cornerRadius) = (newValue.first.first, newValue.first.second, newValue.second) }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        let w = max(width, 1), h = max(height, 0)
+        let left = rect.midX - w / 2, right = left + w
+        let ear = min(Self.ear, h / 2, w / 4)
+        let r = max(0, min(cornerRadius, h - ear, (w - 2 * ear) / 2))
+        var path = Path()
+        path.move(to: CGPoint(x: left, y: 0))
+        path.addQuadCurve(to: CGPoint(x: left + ear, y: ear), control: CGPoint(x: left + ear, y: 0))
+        path.addLine(to: CGPoint(x: left + ear, y: h - r))
+        path.addQuadCurve(to: CGPoint(x: left + ear + r, y: h), control: CGPoint(x: left + ear, y: h))
+        path.addLine(to: CGPoint(x: right - ear - r, y: h))
+        path.addQuadCurve(to: CGPoint(x: right - ear, y: h - r), control: CGPoint(x: right - ear, y: h))
+        path.addLine(to: CGPoint(x: right - ear, y: ear))
+        path.addQuadCurve(to: CGPoint(x: right, y: 0), control: CGPoint(x: right - ear, y: 0))
+        path.closeSubpath()
+        return path
+    }
+}
+
+// MARK: - Inhalt
+
+struct OverlayView: View {
+    @ObservedObject var model: OverlayModel
+    weak var overlay: NotchOverlay?
+
+    private var size: CGSize { model.geometry.size(for: model.state) }
+    private var expanded: Bool {
+        switch model.state {
+        case .result, .message: return true
+        default: return false
+        }
+    }
+
+    var body: some View {
+        if model.geometry.bubble { bubble } else { notch }
+    }
+
+    // MARK: An der Notch
+
+    private var notch: some View {
+        ZStack(alignment: .top) {
+            NotchShape(width: size.width, height: size.height, cornerRadius: expanded ? 22 : 12)
+                .fill(.black)
+                .shadow(color: .black.opacity(expanded ? 0.35 : 0), radius: 14, y: 6)
+
+            if model.state != .hidden {
+                VStack(spacing: 0) {
+                    HStack(spacing: 0) {
+                        leading.frame(maxWidth: .infinity, alignment: .leading)
+                        Color.clear.frame(width: model.geometry.hasNotch ? model.geometry.notchWidth : 20)
+                        trailing.frame(maxWidth: .infinity, alignment: .trailing)
+                    }
+                    .padding(.horizontal, 6)
+                    .frame(height: model.geometry.barHeight)
+
+                    // Unter der Leiste mittig, statt oben zu kleben.
+                    if expanded { detail.frame(maxHeight: .infinity).transition(.opacity.combined(with: .move(edge: .top))) }
+                }
+                .frame(width: size.width - 2 * NotchShape.ear - 16, height: size.height, alignment: .top)
+                .foregroundStyle(.white)
+                .transition(.opacity)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    // MARK: Als Blase
+
+    private var bubble: some View {
+        let visible = model.state != .hidden
+        // Bei halber Höhe als Radius sauber rund – „continuous“ zeichnet dort feine Striche an den Enden.
+        let shape = RoundedRectangle(cornerRadius: expanded ? 20 : size.height / 2, style: expanded ? .continuous : .circular)
+        return ZStack {
+            shape.fill(.black)
+                .overlay(shape.strokeBorder(.white.opacity(0.14)))
+                .shadow(color: .black.opacity(0.35), radius: 14, y: 6)
+            if visible {
+                bubbleContent.foregroundStyle(.white).transition(.opacity)
+            }
+        }
+        .frame(width: size.width, height: size.height)
+        .opacity(visible ? 1 : 0)
+        .scaleEffect(visible ? 1 : 0.9, anchor: .bottom)
+        .padding(.bottom, NotchOverlay.bubbleInset)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+    }
+
+    @ViewBuilder private var bubbleContent: some View {
+        switch model.state {
+        case .recording, .working:
+            HStack(spacing: 10) {
+                leading
+                Spacer(minLength: 8)
+                trailing
+            }
+            .padding(.horizontal, 16)
+        case .message(let text):
+            HStack(spacing: 8) {
+                Image(systemName: "info.circle.fill").font(.system(size: 12))
+                Text(text).font(.system(size: 12, weight: .medium)).lineLimit(2)
+            }
+            .padding(.horizontal, 18)
+        case .result:
+            detail
+        case .hidden:
+            EmptyView()
+        }
+    }
+
+    // MARK: Bausteine
+
+    @ViewBuilder private var leading: some View {
+        switch model.state {
+        case .recording(let handsFree):
+            HStack(spacing: 6) {
+                if handsFree {
+                    Image(systemName: "lock.fill").font(.system(size: 9, weight: .bold)).foregroundStyle(.orange)
+                } else {
+                    PulsingDot()
+                }
+                Elapsed(since: model.startedAt)
+            }
+        case .working:
+            Image(systemName: "waveform").font(.system(size: 11, weight: .semibold)).symbolEffect(.variableColor.iterative)
+        case .message:
+            Image(systemName: "info.circle.fill").font(.system(size: 11))
+        case .hidden, .result:
+            EmptyView()
+        }
+    }
+
+    @ViewBuilder private var trailing: some View {
+        switch model.state {
+        case .recording: LevelHistory(levels: model.levels, dimmed: false)
+        case .working: LevelHistory(levels: model.levels, dimmed: true)
+        default: EmptyView()
+        }
+    }
+
+    @ViewBuilder private var detail: some View {
+        switch model.state {
+        case .message(let text):
+            Text(text)
+                .font(.system(size: 12, weight: .medium))
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 8)
+        case .result(let text):
+            HStack(spacing: 12) {
+                Text(text)
+                    .font(.system(size: 12.5))
+                    .lineLimit(3)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Button { overlay?.copyResult() } label: {
+                    Label(model.copied ? L("Kopiert") : L("Kopieren"), systemImage: model.copied ? "checkmark" : "doc.on.doc")
+                        .font(.system(size: 11.5, weight: .semibold))
+                        .padding(.horizontal, 10)
+                        .frame(height: 28)
+                        .background(.white.opacity(model.copied ? 0.25 : 0.14), in: Capsule())
+                }
+                .buttonStyle(.plain)
+                Button { overlay?.hide() } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 9, weight: .bold))
+                        .frame(width: 22, height: 22)
+                        .background(.white.opacity(0.08), in: Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(L("Schließen"))
+            }
+            .padding(model.geometry.bubble ? EdgeInsets(top: 12, leading: 18, bottom: 12, trailing: 14)
+                                           : EdgeInsets(top: 0, leading: 8, bottom: 6, trailing: 8))
+        default:
+            EmptyView()
+        }
+    }
+}
+
+private struct PulsingDot: View {
+    @State private var bright = false
+
+    var body: some View {
+        Circle()
+            .fill(Color(red: 1, green: 0.27, blue: 0.23))
+            .frame(width: 7, height: 7)
+            .opacity(bright ? 1 : 0.35)
+            .onAppear { withAnimation(.easeInOut(duration: 0.7).repeatForever()) { bright = true } }
+    }
+}
+
+private struct Elapsed: View {
+    let since: Date
+
+    var body: some View {
+        TimelineView(.periodic(from: since, by: 1)) { context in
+            let seconds = max(0, Int(context.date.timeIntervalSince(since)))
+            Text(String(format: "%d:%02d", seconds / 60, seconds % 60))
+                .font(.system(size: 11, weight: .medium).monospacedDigit())
+                .foregroundStyle(.white.opacity(0.85))
+        }
+    }
+}
+
+/// Laufende Pegelkurve: der neueste Wert kommt rechts hinein.
+private struct LevelHistory: View {
+    let levels: [CGFloat]
+    let dimmed: Bool
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(levels.indices, id: \.self) { i in
+                Capsule()
+                    .fill(.white.opacity(dimmed ? 0.35 : 0.55 + 0.45 * Double(i) / Double(levels.count)))
+                    .frame(width: 2.5, height: 3 + 15 * min(1, levels[i]))
+            }
+        }
+        .frame(height: 20)
+        .animation(.easeOut(duration: 0.1), value: levels)
+    }
+}
