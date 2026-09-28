@@ -35,6 +35,15 @@ final class MeetingTimelineTests: XCTestCase {
         XCTAssertTrue(tail.update(offset: 460, content: 920, viewport: 400), "ab jetzt wieder mit")
     }
 
+    func testKeepsTheEndInViewWhenTheViewShrinks() {
+        var tail = TailFollow()
+        _ = tail.update(offset: 400, content: 800, viewport: 400)
+        XCTAssertTrue(tail.resize(to: 340), "eine Meldung nimmt oben Platz weg: das Ende soll im Bild bleiben")
+        XCTAssertFalse(tail.resize(to: 340), "gleiche Größe: nichts zu tun")
+        _ = tail.update(offset: 100, content: 800, viewport: 340)  // jetzt weiter oben lesen
+        XCTAssertFalse(tail.resize(to: 300), "wer oben liest, bleibt dort")
+    }
+
     func testAnimatedScrollAndBouncingDoNotCountAsScrollingUp() {
         var tail = TailFollow()
         _ = tail.update(offset: 0, content: 800, viewport: 400)

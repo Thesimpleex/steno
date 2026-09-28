@@ -197,19 +197,26 @@ struct TailFollow {
     private(set) var following = true
     private var offset: CGFloat = 0
     private var content: CGFloat = 0
+    private var viewport: CGFloat = 0
 
     /// Ein Stück Text, das noch als „unten“ gilt.
     private static let slack: CGFloat = 24
 
-    /// Meldet die neue Lage. Liefert true, wenn ans Ende gescrollt werden soll, weil dort etwas dazukam.
+    /// Meldet die neue Lage. Liefert true, wenn ans Ende gescrollt werden soll, weil dort etwas dazukam
+    /// oder der sichtbare Ausschnitt kleiner wurde (Meldung eingeblendet, Fenster verkleinert).
     mutating func update(offset: CGFloat, content: CGFloat, viewport: CGFloat) -> Bool {
-        defer { (self.offset, self.content) = (offset, content) }
+        defer { (self.offset, self.content, self.viewport) = (offset, content, viewport) }
         if offset + viewport >= content - Self.slack {
             following = true
         } else if offset < self.offset - 0.5 {
             following = false
         }
-        return following && content != self.content
+        return following && (content != self.content || viewport != self.viewport)
+    }
+
+    /// Wie `update`, wenn sich nur der sichtbare Ausschnitt geändert hat.
+    mutating func resize(to viewport: CGFloat) -> Bool {
+        update(offset: offset, content: content, viewport: viewport)
     }
 }
 
@@ -254,13 +261,19 @@ struct FollowingScroll<Content: View>: View {
                 }
                 .coordinateSpace(scrollSpace)
                 .onPreferenceChange(ScrollMetricsKey.self) { metrics in
-                    guard tail.value.update(offset: metrics.offset, content: metrics.content, viewport: outer.size.height) else { return }
-                    DispatchQueue.main.async {
-                        guard tail.value.following else { return }  // inzwischen hat jemand nach oben gescrollt
-                        withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(scrollEnd, anchor: .bottom) }
-                    }
+                    if tail.value.update(offset: metrics.offset, content: metrics.content, viewport: outer.size.height) { scrollToEnd(proxy) }
+                }
+                .onChange(of: outer.size.height) { _, height in
+                    if tail.value.resize(to: height) { scrollToEnd(proxy) }
                 }
             }
+        }
+    }
+
+    private func scrollToEnd(_ proxy: ScrollViewProxy) {
+        DispatchQueue.main.async {
+            guard tail.value.following else { return }  // inzwischen hat jemand nach oben gescrollt
+            withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(scrollEnd, anchor: .bottom) }
         }
     }
 }
