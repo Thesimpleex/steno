@@ -45,7 +45,7 @@ final class MeetingLibraryTests: XCTestCase {
         XCTAssertEqual(titles(library.items), ["Neu", "Mitte", "Alt"])
         let item = try XCTUnwrap(library.items.first { $0.info.title == "Mitte" })
         XCTAssertEqual(item.folder, middle, "dieselbe Adresse, mit der der Ordner angelegt wurde")
-        XCTAssertEqual(library.file(of: item)?.info, item.info)
+        XCTAssertEqual(MeetingStore.read(item.folder)?.info, item.info)
     }
 
     func testReloadFollowsTheFolders() throws {

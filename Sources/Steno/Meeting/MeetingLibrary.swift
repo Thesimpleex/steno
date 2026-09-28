@@ -33,8 +33,6 @@ final class MeetingLibrary: ObservableObject {
             .sorted { $0.info.startedAt > $1.info.startedAt }
     }
 
-    func file(of item: Item) -> MeetingFile? { MeetingStore.read(item.folder) }
-
     /// Treffer in Titel, Teilnehmern und Protokolltext, ohne Rücksicht auf Groß-/Kleinschreibung und Akzente. Leere Suche: alle.
     func items(matching query: String) -> [Item] {
         let query = query.trimmingCharacters(in: .whitespacesAndNewlines)

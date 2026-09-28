@@ -104,7 +104,7 @@ final class MeetingStoreTests: XCTestCase {
         try MeetingStore.write(sample, to: folder)
         XCTAssertEqual(try files.contentsOfDirectory(atPath: folder.path).sorted(), ["Protokoll.md", "meeting.json"])
         XCTAssertEqual(try String(contentsOf: folder.appendingPathComponent("Protokoll.md"), encoding: .utf8),
-                       MeetingStore.markdown(for: sample))
+                       MeetingMarkdown.render(sample))
 
         let json = try String(contentsOf: folder.appendingPathComponent("meeting.json"), encoding: .utf8)
         XCTAssertTrue(json.contains("\"startedAt\" : \"2026-09-28T12:30:00Z\""), "ISO 8601, gut lesbar eingerückt")

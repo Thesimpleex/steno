@@ -33,7 +33,7 @@ struct MeetingDetailView: View {
             }
         }
         .task(id: item.id) {
-            file = library.file(of: item)
+            file = MeetingStore.read(item.folder)
             unreadable = file == nil
         }
         .confirmationDialog(L("Dieses Meeting in den Papierkorb legen?"), isPresented: $confirmTrash) {
@@ -77,7 +77,7 @@ struct MeetingDetailView: View {
 
     private func copyMarkdown() {
         guard let file else { return }
-        TextInsertion.copy(MeetingStore.markdown(for: file))
+        TextInsertion.copy(MeetingMarkdown.render(file))
         copied = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { copied = false }
     }

@@ -34,7 +34,7 @@ enum MeetingStore {
         encoder.dateEncodingStrategy = .iso8601
         do {
             try encoder.encode(file).write(to: folder.appendingPathComponent(MeetingFile.fileName), options: .atomic)
-            try Data(markdown(for: file).utf8).write(to: folder.appendingPathComponent(MeetingFile.markdownName), options: .atomic)
+            try Data(MeetingMarkdown.render(file).utf8).write(to: folder.appendingPathComponent(MeetingFile.markdownName), options: .atomic)
         } catch {
             throw MeetingError.folderUnavailable(folder.lastPathComponent)
         }
@@ -71,8 +71,6 @@ enum MeetingStore {
             throw failure
         }
     }
-
-    static func markdown(for file: MeetingFile) -> String { MeetingMarkdown.render(file) }
 
     /// „2026-09-28 14-30 Titel“ in Ortszeit. `/`, `:` und `\` gehen in Dateinamen nicht und Zeilenumbrüche stören:
     /// Sie werden wie Leerzeichen behandelt.
