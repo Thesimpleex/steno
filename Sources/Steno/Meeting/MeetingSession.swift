@@ -280,7 +280,9 @@ final class MeetingSession: ObservableObject {
             let vocabulary = DictionaryStore.shared.vocabulary
             let language = SpeechLanguage.current
             transcriber.transcribeBackground(samples, prompt: vocabulary.whisperPrompt, language: language.whisperCode) { raw in
-                completion(raw.map { TextCleanup.apply($0, vocabulary, language: language.whisperCode, swiss: language == .swissGerman) })
+                TextCleanup.queue.async {
+                    completion(raw.map { TextCleanup.apply($0, vocabulary, language: language.whisperCode, swiss: language == .swissGerman) })
+                }
             }
         }
     }

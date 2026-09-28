@@ -62,9 +62,6 @@ final class Dictation {
     /// Umwandlungen, deren Ergebnis noch aussteht – solange zeigt die Anzeige „arbeitet“ statt zu verschwinden.
     private var working = 0
     private var lastSecureNotice = Date.distantPast
-    /// Die Nachbearbeitung fragt die Rechtschreibprüfung und gehört nicht auf den Hauptthread. Seriell, damit die
-    /// Ergebnisse in ihrer Reihenfolge bleiben.
-    private let cleanup = DispatchQueue(label: "steno.cleanup", qos: .userInitiated)
 
     private enum Timing {
         static let holdDelay = 0.15        // so lange warten, damit ⌥L (@) & Co. kein Diktat starten
@@ -378,8 +375,8 @@ final class Dictation {
         let vocabulary = DictionaryStore.shared.vocabulary
         let language = SpeechLanguage.current
         transcriber.transcribe(samples, prompt: vocabulary.whisperPrompt, language: language.whisperCode,
-                               cancellation: cancellation) { [cleanup] raw in
-            cleanup.async {
+                               cancellation: cancellation) { raw in
+            TextCleanup.queue.async {
                 let text = TextCleanup.apply(raw, vocabulary, language: language.whisperCode, swiss: language == .swissGerman)
                 DispatchQueue.main.async { then(text) }
             }

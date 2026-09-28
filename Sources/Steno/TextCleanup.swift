@@ -4,6 +4,10 @@ import NaturalLanguage
 /// Nachbearbeitung ohne LLM: Whisper-Artefakte entfernen, eigene Wörter richtig schreiben
 /// (auch wenn Whisper sie verhört hat), feste Ersetzungen anwenden.
 enum TextCleanup {
+    /// Rechtschreibprüfung und Namenserkennung von macOS vertragen keine gleichzeitigen Aufrufe: Diktat und Meeting
+    /// bearbeiten ihren Text deshalb nacheinander auf dieser einen Queue.
+    static let queue = DispatchQueue(label: "steno.cleanup", qos: .userInitiated)
+
     /// `language`: Whisper-Kürzel der Diktiersprache („de“, „en“ …, „auto“).
     static func apply(_ raw: String, _ vocabulary: Vocabulary, language: String = "auto", swiss: Bool = false) -> String {
         var text = removeArtifacts(raw, language: language)
