@@ -1,3 +1,4 @@
+import AppKit
 import AVFoundation
 import CoreAudio
 
@@ -21,9 +22,12 @@ final class SystemAudio: AudioSource {
 
     private let control = DispatchQueue(label: "steno.systemaudio")
     private let io = DispatchQueue(label: "steno.systemaudio.io", qos: .userInitiated)
+    private let workspace = NSWorkspace.shared.notificationCenter
     // Nur auf `control` benutzt:
     private var active = false
-    private let capture = Teardown()  // Abgriff, Sammelgerät, Callback
+    private let observers = Teardown()  // Wechsel des Ausgabegeräts, Aufwachen
+    private let capture = Teardown()    // Abgriff, Sammelgerät, Callback
+    private var rebuild: DispatchWorkItem?
 
     init() {
         io.setSpecific(key: Self.ioQueue, value: ())
@@ -32,7 +36,10 @@ final class SystemAudio: AudioSource {
     deinit {
         // Nur falls stopCapture() fehlte. Nicht direkt abbauen: Der letzte Verweis kann im Callback enden,
         // und das Anhalten würde dann auf eben diesen Callback warten.
-        control.async { [capture] in capture.run() }
+        control.async { [observers, capture] in
+            observers.run()
+            capture.run()
+        }
     }
 
     /// Beim ersten Mal fragt macOS nach der Freigabe; bis zur Antwort kehrt `start()` nicht zurück.
@@ -41,6 +48,7 @@ final class SystemAudio: AudioSource {
             guard !active else { return }
             try build()
             active = true
+            observe()
         }
     }
 
@@ -53,6 +61,8 @@ final class SystemAudio: AudioSource {
 
     private func stop() {
         active = false
+        rebuild?.cancel()
+        observers.run()
         capture.run()
     }
 
@@ -101,10 +111,41 @@ final class SystemAudio: AudioSource {
             // Ohne Freigabe liefert der Abgriff Stille statt eines Fehlers. Seine Beschreibung neu zu setzen,
             // lehnt Core Audio dann aber ab – die einzige öffentliche Auskunft über die Freigabe.
             if Self.apply(description, to: tap) == kAudioDevicePermissionsError { throw MeetingError.systemAudioDenied }
+
+            // AirPods wechseln beim Telefonieren ihr Format, ohne dass sich das Ausgabegerät ändert.
+            if let output = try? Self.read(Self.system, kAudioHardwarePropertyDefaultOutputDevice, AudioObjectID(kAudioObjectUnknown)) {
+                capture.add(Self.listen(output, kAudioDevicePropertyNominalSampleRate, on: control) { [weak self] in
+                    self?.scheduleRebuild()
+                })
+            }
         } catch {
             capture.run()
             throw error
         }
+    }
+
+    /// Neu aufbauen, wenn das Ausgabegerät wechselt (AirPods) oder der Mac aufwacht.
+    private func observe() {
+        observers.add(Self.listen(Self.system, kAudioHardwarePropertyDefaultOutputDevice, on: control) { [weak self] in
+            self?.scheduleRebuild()
+        })
+        let wake = workspace.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: nil) { [weak self] _ in
+            self?.control.async { self?.scheduleRebuild() }
+        }
+        observers.add { [workspace] in workspace.removeObserver(wake) }
+    }
+
+    /// Gerätewechsel kommen in Schüben: erst neu aufbauen, wenn es eine Sekunde ruhig war.
+    /// Klappt der Aufbau nicht, versucht es der nächste Wechsel noch einmal.
+    private func scheduleRebuild() {
+        rebuild?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.active else { return }
+            self.capture.run()
+            try? self.build()
+        }
+        rebuild = work
+        control.asyncAfter(deadline: .now() + 1, execute: work)
     }
 
     // MARK: Ohne Core Audio prüfbar
@@ -178,6 +219,15 @@ final class SystemAudio: AudioSource {
         var address = global(kAudioTapPropertyDescription)
         var reference = Unmanaged.passUnretained(description)
         return AudioObjectSetPropertyData(tap, &address, 0, nil, UInt32(MemoryLayout.size(ofValue: reference)), &reference)
+    }
+
+    /// Meldet Änderungen einer Eigenschaft auf `queue`; der Rückgabewert meldet wieder ab.
+    private static func listen(_ object: AudioObjectID, _ selector: AudioObjectPropertySelector, on queue: DispatchQueue,
+                               _ action: @escaping () -> Void) -> () -> Void {
+        var address = global(selector)
+        let block: AudioObjectPropertyListenerBlock = { _, _ in action() }
+        guard AudioObjectAddPropertyListenerBlock(object, &address, queue, block) == noErr else { return {} }
+        return { AudioObjectRemovePropertyListenerBlock(object, &address, queue, block) }
     }
 
     private static func global(_ selector: AudioObjectPropertySelector) -> AudioObjectPropertyAddress {
