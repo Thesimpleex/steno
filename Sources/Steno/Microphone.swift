@@ -18,16 +18,21 @@ final class Microphone {
     /// Jeder neue Abschnitt, schon im Whisper-Format – kommt auf dem Audio-Thread.
     var onSamples: (([Float]) -> Void)?
     /// Aus: Die Aufnahme wird nicht gesammelt, weil sie stückweise über `onSamples` weiterläuft (Meetings).
-    var accumulates = true
+    /// Liegt in `capture`, weil der Audio-Thread es liest.
+    var accumulates: Bool {
+        get { lock.withLock { capture.keeping } }
+        set { lock.withLock { capture.keeping = newValue } }
+    }
     /// Der erste Puffer ist da, das Mikrofon hört also wirklich zu – kommt auf dem Hauptthread.
     var onListening: (() -> Void)?
-    /// Der Start im Hintergrund ist fehlgeschlagen – kommt auf dem Hauptthread.
+    /// Der Start im Hintergrund ist fehlgeschlagen oder das laufende Gerät ausgefallen – kommt auf dem Hauptthread.
     var onFailure: ((Error) -> Void)?
 
     private let queue = DispatchQueue(label: "steno.microphone", qos: .userInitiated)
     private var session: AVCaptureSession?  // nur auf `queue`: das laufende Gerät
     private var tap: Tap?                   // nur auf `queue`: hält den Empfänger der Puffer am Leben
     private var opened = 0                  // nur auf `queue`
+    private var observers: [NSObjectProtocol] = []  // nur auf `queue`: Ausfälle der laufenden Session
 
     private var capture = Capture()
     private let lock = NSLock()  // für `capture`
@@ -71,17 +76,20 @@ final class Microphone {
 
     /// Nur auf `queue`.
     private func close() {
+        observers.forEach(NotificationCenter.default.removeObserver)
+        observers = []
         session?.stopRunning()
         session = nil
         tap = nil
     }
 
-    /// Öffnet und startet das Gerät für Aufnahme `id`. Ist sie schon wieder beendet (⌥L & Co.), wird das Gerät
-    /// gar nicht erst angefasst – sonst schaltet etwa ein Bluetooth-Kopfhörer um. Nur auf `queue`.
+    /// Öffnet und startet das Gerät für Aufnahme `id`. Ist sie schon beendet, bevor die Queue hierher kommt
+    /// (⌥L & Co. meist), wird das Gerät gar nicht erst angefasst. Ein langsames Kürzel kann es aber kurz öffnen –
+    /// ist das gewählte Gerät Bluetooth (zugeklappt, kein eingebautes), schaltet der Kopfhörer dabei kurz ins Headset. Nur auf `queue`.
     private func open(for id: Int?) throws {
         opened += 1
         let number = opened
-        guard lock.withLock({ capture.begin(id, engine: number) }) else { return }
+        guard lock.withLock({ capture.begin(id, session: number) }) else { return }
         close()
         guard let device = Self.chosenDevice() else { throw Failure.noInput }
         let session = AVCaptureSession()
@@ -100,6 +108,17 @@ final class Microphone {
         guard session.isRunning else { throw Failure.noInput }
         self.session = session
         self.tap = tap
+        // Fällt das Gerät mitten in der Aufnahme aus (abgezogen, von anderer App belegt), kommen einfach keine
+        // Puffer mehr – ohne Meldung bliebe die Aufnahme stumm stehen.
+        observers = [AVCaptureSession.runtimeErrorNotification, AVCaptureSession.wasInterruptedNotification].map { name in
+            NotificationCenter.default.addObserver(forName: name, object: session, queue: nil) { [weak self] note in
+                let error = note.userInfo?[AVCaptureSessionErrorKey] as? Error ?? Failure.noInput
+                DispatchQueue.main.async {
+                    guard let self, self.lock.withLock({ self.capture.isLive(number) }) else { return }
+                    self.onFailure?(error)
+                }
+            }
+        }
     }
 
     /// Welches Mikrofon: Ist das Standard-Mikrofon ein Bluetooth-Headset (AirPods), das eingebaute – sonst fällt
@@ -126,9 +145,10 @@ final class Microphone {
 
     /// Auf dem Audio-Thread.
     private func receive(_ buffer: AVAudioPCMBuffer, converter: AVAudioConverter, from number: Int) {
+        // Erst schauen, ob der Puffer noch dazugehört – Umrechnen kostet mehr als der Blick unter `lock`.
+        guard lock.withLock({ capture.isLive(number) }) else { return }
         let converted = Self.convert(buffer, with: converter)
-        let keeping = accumulates
-        guard let first = lock.withLock({ capture.receive(converted, from: number, keeping: keeping) }) else { return }
+        guard let first = lock.withLock({ capture.receive(converted, from: number) }) else { return }
         if first {
             DispatchQueue.main.async {
                 if self.lock.withLock({ self.capture.isLive(number) }) { self.onListening?() }
@@ -257,9 +277,10 @@ final class Microphone {
     /// Welche Puffer zur Aufnahme gehören. Hauptthread, Queue und Audio-Thread teilen sich das, immer unter `lock`.
     struct Capture {
         private(set) var samples: [Float] = []
+        var keeping = true  // `accumulates`
         private var requested = 0
         private var wanted = 0  // die Aufnahme, die laufen soll; 0: keine
-        private var live = 0    // das Gerät, dessen Puffer zählen; 0: keins
+        private var live = 0    // die Session, deren Puffer zählen; 0: keine
         private var heard = false
 
         /// Hauptthread: Eine neue Aufnahme soll starten.
@@ -269,19 +290,19 @@ final class Microphone {
             return requested
         }
 
-        /// Queue: Gerät `engine` startet für Aufnahme `id` – ohne `id` in jedem Fall.
+        /// Queue: Session `session` startet für Aufnahme `id` – ohne `id` in jedem Fall.
         /// false: Die Aufnahme ist inzwischen schon wieder beendet.
-        mutating func begin(_ id: Int?, engine: Int) -> Bool {
+        mutating func begin(_ id: Int?, session: Int) -> Bool {
             guard id == nil || id == wanted else { return false }
-            live = engine
+            live = session
             heard = false
             samples.removeAll(keepingCapacity: true)
             return true
         }
 
         /// Audio-Thread: nil, wenn der Puffer nicht (mehr) dazugehört, sonst ob es der erste ist.
-        mutating func receive(_ new: [Float]?, from engine: Int, keeping: Bool) -> Bool? {
-            guard engine == live else { return nil }
+        mutating func receive(_ new: [Float]?, from session: Int) -> Bool? {
+            guard session == live else { return nil }
             if keeping, let new { samples.append(contentsOf: new) }
             defer { heard = true }
             return !heard
@@ -296,6 +317,6 @@ final class Microphone {
         }
 
         func isWanted(_ id: Int) -> Bool { id == wanted }
-        func isLive(_ engine: Int) -> Bool { engine == live }
+        func isLive(_ session: Int) -> Bool { session == live }
     }
 }
