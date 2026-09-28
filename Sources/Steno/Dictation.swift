@@ -76,9 +76,15 @@ final class Dictation {
         microphone.onLevel = { [overlay] level in
             DispatchQueue.main.async { overlay.model.push(level: level) }
         }
+        #if DEBUG
+        Latency.watchMainThread()
+        #endif
     }
 
     func handle(_ event: HotKeyMonitor.Event) {
+        #if DEBUG
+        Latency.received(event)
+        #endif
         switch event {
         case .down(let time): keyDown(at: time)
         case .up(let time): keyUp(at: time)
@@ -215,6 +221,9 @@ final class Dictation {
         startedAt = .now - (resumed?.duration ?? 0)
         mode = newMode
         overlay.showRecording(handsFree: newMode == .handsFree, since: startedAt)
+        #if DEBUG
+        Latency.overlayShown()
+        #endif
         Sound.start.play()
         schedule(&pendingMediaPause, after: Timing.mediaPauseDelay) { [weak self] in self?.media.pause() }
         schedule(&recordingLimit, after: Timing.maximum) { [weak self] in self?.finishRecording() }
@@ -354,6 +363,9 @@ final class Dictation {
     // MARK: Ergebnis
 
     private func deliver(_ result: String) {
+        #if DEBUG
+        Latency.mark("Ergebnis")
+        #endif
         let recordingAgain = mode != .idle  // schon das nächste Diktat angefangen: Anzeige nicht anfassen
         // Ein zurückgehaltenes Ergebnis aus der Zeit davor gehört mit dazu.
         var text = result

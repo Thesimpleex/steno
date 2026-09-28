@@ -22,6 +22,10 @@ final class Microphone {
     static var authorized: Bool { AVCaptureDevice.authorizationStatus(for: .audio) == .authorized }
 
     func start() throws {
+        #if DEBUG
+        let began = ProcessInfo.processInfo.systemUptime
+        defer { Latency.duration("Mikrofon starten", since: began) }
+        #endif
         let engine = AVAudioEngine()
         let input = engine.inputNode
         // Ist das Standard-Mikrofon ein Bluetooth-Headset (AirPods), das eingebaute nehmen: sonst fällt
