@@ -46,7 +46,7 @@
 "Das ist ein Beispieltext, der ohne aktives Textfeld erscheint und kopiert werden kann." = "This is a sample text that appears when no text field is focused, ready to copy.";
 "Abgebrochen – innerhalb von 3 s %@ drücken, um fortzusetzen" = "Canceled – press %@ within 3 s to resume";
 "Abgebrochen" = "Canceled";
-"Eine Passworteingabe ist aktiv – so lange wird nicht diktiert." = "A password field is active – dictation is paused until it closes.";
+"Sichere Tastatureingabe ist aktiv – so lange wird nicht diktiert." = "Secure keyboard entry is on – dictation is paused until it’s off.";
 "Kein Mikrofonzugriff – Steno-Fenster öffnen" = "No microphone access – open the Steno window";
 "Mikrofon lässt sich nicht starten" = "The microphone couldn’t be started";
 "Nichts verstanden" = "Nothing recognized";

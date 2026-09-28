@@ -221,11 +221,12 @@ final class Dictation {
 
     private func startRecording(_ newMode: Mode) {
         guard mode == .idle else { return }
-        // In Passwortfeldern ist die sichere Eingabe an: nicht zuhören, nichts einfügen.
+        // Sichere Tastatureingabe – ein Passwortfeld, aber etwa auch die gleichnamige Einstellung im Terminal:
+        // nicht zuhören, nichts einfügen.
         guard !IsSecureEventInputEnabled() else {
             if Date.now.timeIntervalSince(lastSecureNotice) > 5 {
                 lastSecureNotice = .now
-                overlay.showMessage(L("Eine Passworteingabe ist aktiv – so lange wird nicht diktiert."), seconds: 2.5)
+                overlay.showMessage(L("Sichere Tastatureingabe ist aktiv – so lange wird nicht diktiert."), seconds: 2.5)
             }
             return
         }

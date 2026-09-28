@@ -46,7 +46,7 @@
 "Das ist ein Beispieltext, der ohne aktives Textfeld erscheint und kopiert werden kann." = "Voici un exemple de texte qui apparaît quand aucun champ n’est actif, prêt à être copié.";
 "Abgebrochen – innerhalb von 3 s %@ drücken, um fortzusetzen" = "Annulé – appuyez sur %@ dans les 3 s pour reprendre";
 "Abgebrochen" = "Annulé";
-"Eine Passworteingabe ist aktiv – so lange wird nicht diktiert." = "Un champ de mot de passe est actif – la dictée est suspendue.";
+"Sichere Tastatureingabe ist aktiv – so lange wird nicht diktiert." = "L’entrée clavier sécurisée est activée – la dictée est suspendue.";
 "Kein Mikrofonzugriff – Steno-Fenster öffnen" = "Pas d’accès au micro – ouvrez la fenêtre Steno";
 "Mikrofon lässt sich nicht starten" = "Impossible de démarrer le micro";
 "Nichts verstanden" = "Aucune parole reconnue";
