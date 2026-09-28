@@ -24,6 +24,15 @@ enum TextInsertion {
         var canType = false
         /// Das Zeichen direkt vor dem Cursor: "" am Feldanfang, nil wenn nicht lesbar (z. B. im Terminal).
         var characterBefore: String?
+        /// Die App, die beim Nachsehen die Tastatur hatte – auch Steno selbst.
+        var app: NSRunningApplication?
+
+        /// Hat sie die Tastatur noch? `ownField`: Ein Textfeld in Steno hat sie gerade – das Notizfeld auch dann, wenn
+        /// Steno nicht vorn ist.
+        func isCurrent(frontmost: NSRunningApplication?, ownField: Bool) -> Bool {
+            guard let app else { return false }
+            return app == .current ? ownField : !ownField && frontmost == app
+        }
     }
 
     /// Die Bedienungshilfen warten auf eine hängende App bis zu einer Sekunde – deshalb eine eigene Queue.
@@ -51,11 +60,11 @@ enum TextInsertion {
         switch focus(in: app) {
         case .field(let field):
             guard typing || accepts(field) else { return Target() }
-            return Target(canType: true, characterBefore: characterBefore(in: field))
-        case .nothing: return Target(canType: typing)
+            return Target(canType: true, characterBefore: characterBefore(in: field), app: app)
+        case .nothing: return Target(canType: typing, app: app)
         // Die App gibt keine Auskunft (hängt kurz, oder macOS kennt ihren Prozess gerade nicht):
         // dann trotzdem einfügen – das Diktat soll dort landen, wo der Cursor steht.
-        case .unknown: return Target(canType: true)
+        case .unknown: return Target(canType: true, app: app)
         }
     }
 
@@ -91,10 +100,16 @@ enum TextInsertion {
     /// Ein Textfeld in Steno selbst. Nur auf dem Hauptthread.
     private static var ownTarget: Target {
         guard let view = ownField else { return Target() }
+        let text = view.string as NSString
         let location = view.selectedRange().location
-        guard location > 0, location <= view.string.utf16.count else { return Target(canType: true, characterBefore: "") }
-        return Target(canType: true,
-                      characterBefore: (view.string as NSString).substring(with: NSRange(location: location - 1, length: 1)))
+        let before = location > 0 && location <= text.length ? text.substring(with: NSRange(location: location - 1, length: 1)) : ""
+        return Target(canType: true, characterBefore: before, app: .current)
+    }
+
+    /// Hat noch die App die Tastatur, in der nachgesehen wurde – und kam keine sichere Tastatureingabe dazwischen?
+    /// Nur auf dem Hauptthread.
+    private static func hasKeyboard(_ target: Target) -> Bool {
+        !IsSecureEventInputEnabled() && target.isCurrent(frontmost: NSWorkspace.shared.frontmostApplication, ownField: ownField != nil)
     }
 
     /// Hängt eine App, sollen Abfragen an sie Steno nicht mitreißen.
@@ -170,14 +185,16 @@ enum TextInsertion {
     /// Was darüber liegt, kam von außen – etwa ein Screenshot. Nur auf dem Hauptthread benutzen.
     private(set) static var ownChangeCount = 0
 
-    /// `send`: danach Return drücken, etwa um eine Chatnachricht abzuschicken.
-    static func paste(_ text: String, send: Bool = false) {
+    /// `send`: danach Return drücken, etwa um eine Chatnachricht abzuschicken. Text und Return gehen nur an die App, die
+    /// beim Nachsehen die Tastatur hatte – hat sie inzwischen eine andere, kommt stattdessen `missed`.
+    static func paste(_ text: String, into target: Target, send: Bool = false, missed: @escaping () -> Void) {
         // Kurz nach dem letzten Einfügen warten, bis die App den Text gelesen hat – sonst bekäme sie schon den neuen.
         let wait = nextPaste.timeIntervalSinceNow
         if wait > 0 {
-            DispatchQueue.main.asyncAfter(deadline: .now() + wait) { paste(text, send: send) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + wait) { paste(text, into: target, send: send, missed: missed) }
             return
         }
+        guard hasKeyboard(target) else { return missed() }
         let pasteboard = NSPasteboard.general
         // Liegt von eben noch unser eigener Text in der Ablage, gilt weiter der Stand von davor.
         // Hat der Nutzer inzwischen selbst etwas kopiert, wird das gesichert.
@@ -199,9 +216,10 @@ enum TextInsertion {
         nextPaste = Date.now.addingTimeInterval(0.4)
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+            guard hasKeyboard(target) else { return missed() }
             pressCommandV()
             // Erst abschicken, wenn die App den Text eingesetzt hat.
-            if send { DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { pressReturn() } }
+            if send { DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { if hasKeyboard(target) { pressReturn() } } }
         }
 
         let restore = DispatchWorkItem {
@@ -261,9 +279,8 @@ enum TextInsertion {
         }
     }
 
-    /// Wie ⌘V markiert, damit der eigene Tastatur-Abgriff es durchlässt. Nie in eine Passworteingabe.
-    static func pressReturn() {
-        guard !IsSecureEventInputEnabled() else { return }
+    /// Wie ⌘V markiert, damit der eigene Tastatur-Abgriff es durchlässt.
+    private static func pressReturn() {
         let source = CGEventSource(stateID: .privateState)
         for down in [true, false] {
             guard let event = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_Return), keyDown: down) else { return }

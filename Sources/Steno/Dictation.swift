@@ -414,8 +414,15 @@ final class Dictation {
         if target.canType {  // nur gefragt, wenn eingefügt werden soll
             if !recordingAgain { working > 0 ? overlay.showWorking() : overlay.hide() }
             // Abgeschickt wird nur, was gerade diktiert wurde – nicht ein zurückgehaltener Text allein.
-            insert(text, at: target, send: send && !result.isEmpty)
-        } else if recordingAgain {
+            insert(text, at: target, send: send && !result.isEmpty) { [weak self] in self?.show(text) }
+        } else {
+            show(text)
+        }
+    }
+
+    /// Was nicht eingefügt wird, erscheint an der Notch – während einer Aufnahme erst nach ihr.
+    private func show(_ text: String) {
+        if mode != .idle {
             // Nicht verlieren: in die Zwischenablage und nach der laufenden Aufnahme zeigen.
             TextInsertion.copy(text)
             pendingResult = [pendingResult, text].compactMap { $0 }.joined(separator: "\n")
@@ -432,14 +439,17 @@ final class Dictation {
         guard let text = lastText ?? HistoryStore.shared.entries.first?.text else {
             return overlay.showMessage(L("Noch kein Diktat im Verlauf"), seconds: 1.5)
         }
+        let show = { [overlay] in overlay.showResult(text) }
         TextInsertion.inspect { [weak self] target in
-            if target.canType { self?.insert(text, at: target) } else { self?.overlay.showResult(text) }
+            if target.canType { self?.insert(text, at: target, missed: show) } else { show() }
         }
     }
 
-    private func insert(_ text: String, at target: TextInsertion.Target, send: Bool = false) {
-        let app = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
-        TextInsertion.paste(spacing.needed(before: target.characterBefore, in: app) ? " " + text : text, send: send)
+    /// `missed`: Die Tastatur ist inzwischen bei einer anderen App, eingefügt wurde nichts.
+    private func insert(_ text: String, at target: TextInsertion.Target, send: Bool = false, missed: @escaping () -> Void) {
+        let app = target.app?.bundleIdentifier
+        TextInsertion.paste(spacing.needed(before: target.characterBefore, in: app) ? " " + text : text, into: target, send: send,
+                            missed: missed)
         spacing.inserted(in: app, sent: send)
     }
 
