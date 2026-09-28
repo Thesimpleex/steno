@@ -20,5 +20,5 @@ enum MeetingStore {
     /// Speichert das Bild als PNG im Bilderordner und liefert den Dateinamen.
     static func saveImage(_ image: NSImage, at offset: TimeInterval, in folder: URL) throws -> String { "" }
 
-    static func markdown(for file: MeetingFile) -> String { "" }
+    static func markdown(for file: MeetingFile) -> String { MeetingMarkdown.render(file) }
 }
