@@ -68,7 +68,7 @@ final class MainWindow: NSObject, NSWindowDelegate {
         window.toolbar = NSToolbar(identifier: "steno.main")
         window.toolbarStyle = .unified
         window.isReleasedWhenClosed = false
-        window.minSize = NSSize(width: 820, height: 540)
+        window.minSize = NSSize(width: 860, height: 540)  // Platz für fünf Tabs samt Marke und Status, auch auf Französisch
         window.contentView = NSHostingView(rootView: content)
         return window
     }

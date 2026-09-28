@@ -215,12 +215,12 @@ enum DevTools {
             save(main(.settings, ready, models, dark: dark, height: 900, scrolledBy: 3000), to: "\(folder)/main-settings-bottom-\(suffix).png")
             save(main(.start, setup, models, dark: dark), to: "\(folder)/main-setup-\(suffix).png")
             save(main(.start, setup, models, dark: dark, scrolledBy: 180), to: "\(folder)/main-setup-scrolled-\(suffix).png")
-            save(main(.start, ready, models, dark: dark, width: 780, height: 540), to: "\(folder)/main-start-small-\(suffix).png")
+            save(main(.start, ready, models, dark: dark, width: 860, height: 540), to: "\(folder)/main-start-small-\(suffix).png")
             save(main(.start, ready, models, dark: dark, meeting: running), to: "\(folder)/main-start-running-\(suffix).png")
             save(main(.meetings, ready, models, dark: dark, library: MeetingLibrary()), to: "\(folder)/main-meetings-empty-\(suffix).png")
             save(main(.meetings, ready, models, dark: dark, meeting: running), to: "\(folder)/main-meetings-running-\(suffix).png")
             save(main(.meetings, ready, models, dark: dark, meeting: started), to: "\(folder)/main-meetings-started-\(suffix).png")
-            save(main(.meetings, ready, models, dark: dark, width: 820, height: 540, meeting: running),
+            save(main(.meetings, ready, models, dark: dark, width: 860, height: 540, meeting: running),
                  to: "\(folder)/main-meetings-running-small-\(suffix).png")
             save(main(.meetings, ready, models, dark: dark, meeting: finishing), to: "\(folder)/main-meetings-finishing-\(suffix).png")
             save(main(.meetings, ready, models, dark: dark, height: 1100, opened: library.items.first),
