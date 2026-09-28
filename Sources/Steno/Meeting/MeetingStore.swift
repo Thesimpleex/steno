@@ -91,7 +91,10 @@ enum MeetingStore {
         formatter.timeZone = .autoupdatingCurrent
         formatter.dateFormat = "yyyy-MM-dd HH-mm"
         let words = info.title.split { $0.isWhitespace || "/:\\".contains($0) }.joined(separator: " ")
-        let title = String(words.prefix(60)).trimmingCharacters(in: .whitespaces)
+        var title = String(words.prefix(60))
+        // Dateinamen sind auf 255 Zeichen oder Bytes begrenzt, und manches Zeichen braucht vier Bytes.
+        while title.utf8.count > 200 { title.removeLast() }
+        title = title.trimmingCharacters(in: .whitespaces)
         return formatter.string(from: info.startedAt) + " " + (title.isEmpty ? "Meeting" : title)
     }
 }

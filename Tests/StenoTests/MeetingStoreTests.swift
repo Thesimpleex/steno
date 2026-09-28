@@ -75,6 +75,15 @@ final class MeetingStoreTests: XCTestCase {
         XCTAssertEqual(name, "2026-09-28 14-30 " + String(repeating: "abcdefghi ", count: 6).trimmingCharacters(in: .whitespaces))
     }
 
+    /// Dateinamen sind auf 255 Zeichen oder Bytes begrenzt; „𠮷“ braucht vier Bytes, eine Hindi-Silbe oft vier Zeichen.
+    func testTitleInLongCharactersStillFitsAFolderName() throws {
+        for title in [String(repeating: "𠮷", count: 60), String(repeating: "स्ते", count: 60)] {
+            let name = try folderName(title)
+            XCTAssertLessThanOrEqual(name.utf8.count, 255)
+            XCTAssertTrue(name.hasPrefix("2026-09-28 14-30 " + title.prefix(10)))
+        }
+    }
+
     func testSameNameGetsANumber() throws {
         XCTAssertEqual(try folderName("Daily"), "2026-09-28 14-30 Daily")
         XCTAssertEqual(try folderName("Daily"), "2026-09-28 14-30 Daily 2")
