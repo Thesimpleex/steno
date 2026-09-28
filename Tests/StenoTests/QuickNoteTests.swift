@@ -19,7 +19,8 @@ final class QuickNoteTests: XCTestCase {
         XCTAssertEqual(command(#selector(NSResponder.insertNewline(_:)), typing: "Budget klären"), .note("Budget klären"))
         XCTAssertEqual(command(#selector(NSResponder.insertNewline(_:)), typing: "!Angebot schicken"), .task("Angebot schicken"))
         XCTAssertEqual(command(#selector(NSResponder.insertNewline(_:)), typing: ""), .mark)
-        XCTAssertEqual(meeting.entries.count, 3)
+        XCTAssertEqual(command(#selector(NSResponder.insertNewline(_:)), typing: " ! "), .mark, "keine leere Aufgabe")
+        XCTAssertEqual(meeting.entries.count, 4)
     }
 
     func testPastedLineBreaksBecomeOneLine() {

@@ -79,7 +79,7 @@ final class QuickNote: NSObject, NSTextFieldDelegate, NSWindowDelegate {
         meeting.addNote(note)
         close()
         let trimmed = note.trimmingCharacters(in: .whitespacesAndNewlines)
-        overlay.confirm(trimmed.isEmpty ? L("Markierung gesetzt")
+        overlay.confirm(trimmed.isEmpty || trimmed == "!" ? L("Markierung gesetzt")
                         : trimmed.hasPrefix("!") ? L("Aufgabe gespeichert") : L("Notiz gespeichert"))
     }
 

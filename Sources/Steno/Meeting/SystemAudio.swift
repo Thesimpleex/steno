@@ -20,21 +20,18 @@ final class SystemAudio: AudioSource {
     private static let musicPlayers = ["com.spotify.client", "com.apple.Music"]
     private static let system = AudioObjectID(kAudioObjectSystemObject)
     private static let batchSize = 1_600  // 0,1 s – so oft liefert auch das Mikrofon
-    private static let ioQueue = DispatchSpecificKey<Void>()
 
     private let control = DispatchQueue(label: "steno.systemaudio")
     private let io = DispatchQueue(label: "steno.systemaudio.io", qos: .userInitiated)
-    private let workspace = NSWorkspace.shared.notificationCenter
     private let permission = OSAllocatedUnfairLock(initialState: false)  // fehlt die Freigabe?
+    /// Die Abtastrate des Ausgabegeräts hat sich geändert: Bis zum Neuaufbau passen die Blöcke nicht mehr zum Wandler
+    /// und würden verzerrt. Gesetzt auf `control`, gelesen im Callback.
+    private let stale = OSAllocatedUnfairLock(initialState: false)
     // Nur auf `control` benutzt:
     private var active = false
-    private let observers = Teardown()  // Wechsel des Ausgabegeräts, Aufwachen
+    private let observers = Teardown()  // Wechsel des Ausgabegeräts
     private let capture = Teardown()    // Abgriff, Sammelgerät, Callback
     private var rebuild: DispatchWorkItem?
-
-    init() {
-        io.setSpecific(key: Self.ioQueue, value: ())
-    }
 
     deinit {
         // Nur falls stopCapture() fehlte. Nicht direkt abbauen: Der letzte Verweis kann im Callback enden,
@@ -58,8 +55,6 @@ final class SystemAudio: AudioSource {
 
     /// Hält an und baut alles ab – beliebig oft und von jedem Thread aus.
     func stopCapture() {
-        // Aus dem Callback heraus würde das Anhalten auf das Ende eben dieses Callbacks warten.
-        if DispatchQueue.getSpecific(key: Self.ioQueue) != nil { return control.async(execute: stop) }
         control.sync(execute: stop)
     }
 
@@ -73,6 +68,7 @@ final class SystemAudio: AudioSource {
 
     /// Legt Abgriff, Sammelgerät und Callback an und startet sie. Scheitert ein Schritt, wird der Rest wieder abgebaut.
     private func build() throws {
+        stale.withLock { $0 = false }
         do {
             let description = CATapDescription(stereoGlobalTapButExcludeProcesses: Self.excluded(Self.clients(), own: getpid()))
             description.uuid = UUID()
@@ -102,7 +98,8 @@ final class SystemAudio: AudioSource {
             var batch: [Float] = []
             var proc: AudioDeviceIOProcID?
             try Self.check(AudioDeviceCreateIOProcIDWithBlock(&proc, device, io) { [weak self] _, input, _, _, _ in
-                guard let self, let samples = Self.samples(from: input, format: format, converter: converter) else { return }
+                guard let self, !self.stale.withLock({ $0 }),
+                      let samples = Self.samples(from: input, format: format, converter: converter) else { return }
                 batch += samples
                 guard batch.count >= Self.batchSize else { return }
                 self.onLevel?(Self.level(of: batch))
@@ -133,6 +130,7 @@ final class SystemAudio: AudioSource {
             // AirPods wechseln beim Telefonieren ihr Format, ohne dass sich das Ausgabegerät ändert.
             if let output = try? Self.read(Self.system, kAudioHardwarePropertyDefaultOutputDevice, AudioObjectID(kAudioObjectUnknown)) {
                 capture.add(Self.listen(output, kAudioDevicePropertyNominalSampleRate, on: control) { [weak self] in
+                    self?.stale.withLock { $0 = true }
                     self?.scheduleRebuild()
                 })
             }
@@ -149,15 +147,12 @@ final class SystemAudio: AudioSource {
         }
     }
 
-    /// Neu aufbauen, wenn das Ausgabegerät wechselt (AirPods) oder der Mac aufwacht.
+    /// Neu aufbauen, wenn das Ausgabegerät wechselt (AirPods). Um den Ruhezustand kümmert sich MeetingSession:
+    /// Sie hält die Quellen vorher an und startet sie danach neu.
     private func observe() {
         observers.add(Self.listen(Self.system, kAudioHardwarePropertyDefaultOutputDevice, on: control) { [weak self] in
             self?.scheduleRebuild()
         })
-        let wake = workspace.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: nil) { [weak self] _ in
-            self?.control.async { self?.scheduleRebuild() }
-        }
-        observers.add { [workspace] in workspace.removeObserver(wake) }
     }
 
     /// Gerätewechsel kommen in Schüben: erst neu aufbauen, wenn es eine Sekunde ruhig war.

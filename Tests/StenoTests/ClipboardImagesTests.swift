@@ -46,6 +46,21 @@ final class ClipboardImagesTests: XCTestCase {
         XCTAssertNotNil(next(), "ein Bild danach wird trotzdem erkannt")
     }
 
+    func testIgnoresImagesThatComeWithMore() {
+        let url = NSURL(fileURLWithPath: "/tmp/Bericht.pdf").absoluteString!
+        let extras: [(NSPasteboard.PasteboardType, String)] = [
+            (.fileURL, url),  // ⌘C auf eine Datei im Finder legt ihr Symbol als TIFF dazu
+            (.string, "Tabelle"), (.rtf, "{\\rtf1 Folie}"), (.html, "<b>Seite</b>"),
+            (.init("org.nspasteboard.TransientType"), ""), (.init("org.nspasteboard.ConcealedType"), ""),
+        ]
+        for (type, value) in extras {
+            pasteboard.clearContents()
+            pasteboard.setData(imageData(.tiff), forType: .tiff)
+            pasteboard.setString(value, forType: type)
+            XCTAssertNil(next(), "\(type.rawValue)")
+        }
+    }
+
     func testIgnoresTheImageStenoPutBack() {
         copyImage()
         XCTAssertNotNil(next())

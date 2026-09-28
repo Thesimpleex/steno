@@ -29,18 +29,28 @@ final class ClipboardImages {
 
     private func poll() {
         guard let image = Self.newImage(in: pasteboard, seen: &seen, ownChangeCount: TextInsertion.ownChangeCount) else { return }
-        meeting.addImage(image)
-        overlay.confirm(L("Bild gespeichert"))
+        // Erst bestätigen, wenn wirklich eine neue Datei entstand – nicht bei einem doppelten Bild oder einem Fehler.
+        meeting.addImage(image) { [overlay] saved in
+            if saved { overlay.confirm(L("Bild gespeichert")) }
+        }
     }
+
+    /// Was neben einem Bild in der Ablage liegt, verrät kopierte Dateien (Finder legt das Symbol dazu),
+    /// Auswahlen aus Office oder dem Browser und Passwortmanager. Das ist kein Bildschirmausschnitt.
+    private static let notScreenshot: [NSPasteboard.PasteboardType] = [
+        .fileURL, .string, .rtf, .html,
+        .init("org.nspasteboard.TransientType"), .init("org.nspasteboard.ConcealedType"),
+    ]
 
     /// Das Bild, das seit `seen` von außen in die Ablage kam. Was Steno selbst hineinlegt – das Diktat beim Einfügen,
     /// danach der alte Inhalt –, hat höchstens den eigenen Zählerstand und ist nie ein neues Bild.
-    /// Der Inhalt wird erst gelesen, wenn der Typ stimmt: Text und alles andere bleiben unberührt.
+    /// Der Inhalt wird erst gelesen, wenn die Typen stimmen: Text und alles andere bleiben unberührt.
     static func newImage(in pasteboard: NSPasteboard, seen: inout Int, ownChangeCount: Int) -> NSImage? {
         let count = pasteboard.changeCount
         guard count != seen else { return nil }
         seen = count
         guard count > ownChangeCount,
+              let types = pasteboard.types, !types.contains(where: notScreenshot.contains),
               let type = pasteboard.availableType(from: [.png, .tiff]),
               let data = pasteboard.data(forType: type) else { return nil }
         return NSImage(data: data)

@@ -207,7 +207,7 @@ final class MeetingSession: ObservableObject {
         guard state == .running else { return }
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let kind: MeetingEntry.Kind
-        if text.isEmpty {
+        if text.isEmpty || text == "!" {  // ein „!“ ohne Text wäre eine leere Aufgabe
             kind = .mark
         } else if text.hasPrefix("!") {
             kind = .task(text.dropFirst().trimmingCharacters(in: .whitespaces))
@@ -218,8 +218,9 @@ final class MeetingSession: ObservableObject {
     }
 
     /// Ein Screenshot aus der Zwischenablage; er wird als PNG im Bilderordner abgelegt.
-    func addImage(_ image: NSImage) {
-        guard state == .running, let folder else { return }
+    /// `completion` meldet auf dem Main-Thread, ob eine neue Datei entstand – Doppelte und Fehler zählen nicht.
+    func addImage(_ image: NSImage, completion: ((Bool) -> Void)? = nil) {
+        guard state == .running, let folder else { completion?(false); return }
         let offset = elapsed
         pending += 1
         storage.async {
@@ -228,6 +229,7 @@ final class MeetingSession: ObservableObject {
                 self.pending -= 1
                 if let name { self.entries.insertSorted(MeetingEntry(offset: offset, kind: .image(name))) }
                 self.finishIfDone()
+                completion?(name != nil)
             }
         }
     }

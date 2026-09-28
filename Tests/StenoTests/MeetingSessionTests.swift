@@ -275,7 +275,8 @@ final class MeetingSessionTests: XCTestCase {
         session.addNote("  ")
         session.addNote("! Angebot schicken")
         session.addNote("Budget klären")
-        XCTAssertEqual(session.entries.map(\.kind), [.mark, .task("Angebot schicken"), .note("Budget klären")])
+        session.addNote("!")
+        XCTAssertEqual(session.entries.map(\.kind), [.mark, .task("Angebot schicken"), .note("Budget klären"), .mark])
         XCTAssertTrue(session.entries.allSatisfy { $0.offset >= 0 && $0.offset < 1 })
     }
 
@@ -289,12 +290,14 @@ final class MeetingSessionTests: XCTestCase {
     func testSameScreenshotOnlyOnce() throws {
         try start(.microphone)
         let red = image(.red)
-        session.addImage(red)
-        session.addImage(red)
-        session.addImage(image(.blue))
+        var saved: [Bool] = []
+        session.addImage(red) { saved.append($0) }
+        session.addImage(red) { saved.append($0) }
+        session.addImage(image(.blue)) { saved.append($0) }
         session.stop()
         wait { self.session.state == .idle }
         XCTAssertEqual(session.entries.map(\.kind), [.image("bild-1.png"), .image("bild-2.png")])
+        XCTAssertEqual(saved, [true, false, true], "nur neue Dateien melden sich als gespeichert")
     }
 
     func testSavesRightAwayThenAtMostEveryOneAndAHalfSeconds() throws {
