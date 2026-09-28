@@ -227,7 +227,6 @@ final class MeetingSession: ObservableObject {
         entries.removeAll { $0.id == entry.id }
     }
 
-    func rename(title: String) { info.title = title }
     func rename(others name: String) { info.othersName = name }
     func setParticipants(_ text: String) { info.participants = text }
 

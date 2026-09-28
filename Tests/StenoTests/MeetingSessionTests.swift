@@ -277,13 +277,13 @@ final class MeetingSessionTests: XCTestCase {
         XCTAssertEqual(files.writes.count, 1, "gleich beim Start")
         session.addNote("eins")
         session.addNote("zwei")
-        session.rename(title: "Neu")
+        session.setParticipants("Anna Meyer")
         RunLoop.main.run(until: .now + 1)
         XCTAssertEqual(files.writes.count, 1)
         wait { self.files.writes.count == 2 }
         let saved = try XCTUnwrap(files.writes.last)
         XCTAssertEqual(saved.entries.count, 2)
-        XCTAssertEqual(saved.info.title, "Neu")
+        XCTAssertEqual(saved.info.participants, "Anna Meyer")
         XCTAssertGreaterThan(saved.info.duration, 1, "die Dauer bis zum Speichern")
     }
 
