@@ -2,11 +2,12 @@ import AppKit
 import SwiftUI
 
 enum Page: Hashable, CaseIterable {
-    case start, history, dictionary, settings
+    case start, meetings, history, dictionary, settings
 
     var title: String {
         switch self {
         case .start: return L("Start")
+        case .meetings: return L("Meetings")
         case .history: return L("Verlauf")
         case .dictionary: return L("Wörterbuch")
         case .settings: return L("Einstellungen")
@@ -16,6 +17,7 @@ enum Page: Hashable, CaseIterable {
     var symbol: String {
         switch self {
         case .start: return "house"
+        case .meetings: return "person.2"
         case .history: return "clock"
         case .dictionary: return "character.book.closed"
         case .settings: return "gearshape"
@@ -98,6 +100,7 @@ struct RootView: View {
             Group {
                 switch navigation.page {
                 case .start: StartPage(state: state, navigation: navigation)
+                case .meetings: MeetingsPage(meeting: meeting, library: library)
                 case .history: HistoryPage(navigation: navigation)
                 case .dictionary: DictionaryPage()
                 case .settings: SettingsPage(state: state, models: models)
