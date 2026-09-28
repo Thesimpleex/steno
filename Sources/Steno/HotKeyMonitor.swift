@@ -160,7 +160,7 @@ final class HotKeyMonitor {
                 return true
             }
             // Return gehört während der Aufnahme dem Diktat, nicht der App darunter – und zählt nicht als Tastenkürzel.
-            if Self.returnKeys.contains(keyCode), isRecording {
+            if Self.returnKeys.contains(keyCode), isRecording, Self.isPlainReturn(flags, holding: holding ? heldKey : nil) {
                 if !repeating { send(.send) }
                 return true
             }
@@ -174,6 +174,18 @@ final class HotKeyMonitor {
             break
         }
         return false
+    }
+
+    /// Nur ein schlichtes Return schickt ab. ⇧↩ (neue Zeile in Slack & Co.), ⌘↩ und ⌃↩ gehören der App.
+    /// Die gehaltene Diktier-Taste setzt ihr Sammel-Bit selbst – sie zählt nicht mit.
+    static func isPlainReturn(_ flags: CGEventFlags, holding key: HotKey?) -> Bool {
+        let families: [(CGEventFlags, UInt64)] = [(.maskShift, 0x02 | 0x04), (.maskCommand, 0x08 | 0x10),
+                                                  (.maskControl, 0x01 | 0x2000)]
+        return families.allSatisfy { generic, sides in
+            guard flags.contains(generic) else { return true }
+            guard let key, sides & key.flag != 0 else { return false }
+            return flags.rawValue & sides & ~key.flag == 0  // nur die andere Seite derselben Taste zählt
+        }
     }
 
     #if DEBUG

@@ -33,6 +33,28 @@ enum TextInsertion {
             guard let app else { return false }
             return app == .current ? ownField : !ownField && frontmost == app
         }
+
+        /// Ist das die App, in der Return gedrückt wurde? Nur dorthin darf das Return nachher gehen.
+        func belongs(to receiver: Receiver) -> Bool {
+            guard let app else { return false }
+            return Receiver(app) == receiver
+        }
+    }
+
+    /// Die App, die beim Druck auf Return die Tastatur hatte.
+    struct Receiver: Equatable {
+        var pid: pid_t
+        var bundleID: String?
+
+        init(_ app: NSRunningApplication?) {
+            pid = app?.processIdentifier ?? 0
+            bundleID = app?.bundleIdentifier
+        }
+    }
+
+    /// Wer jetzt die Tastatur hat – ein eigenes Feld zählt als Steno. Nur auf dem Hauptthread.
+    static var keyboardReceiver: Receiver {
+        Receiver(ownField != nil ? .current : NSWorkspace.shared.frontmostApplication)
     }
 
     /// Die Bedienungshilfen warten auf eine hängende App bis zu einer Sekunde – deshalb eine eigene Queue.
@@ -187,11 +209,13 @@ enum TextInsertion {
 
     /// `send`: danach Return drücken, etwa um eine Chatnachricht abzuschicken. Text und Return gehen nur an die App, die
     /// beim Nachsehen die Tastatur hatte – hat sie inzwischen eine andere, kommt stattdessen `missed`.
-    static func paste(_ text: String, into target: Target, send: Bool = false, missed: @escaping () -> Void) {
+    /// `pasted` kommt nur, wenn wirklich eingefügt wurde; `sent`: Return ging auch hinterher.
+    static func paste(_ text: String, into target: Target, send: Bool = false, missed: @escaping () -> Void,
+                      pasted: @escaping (_ sent: Bool) -> Void = { _ in }) {
         // Kurz nach dem letzten Einfügen warten, bis die App den Text gelesen hat – sonst bekäme sie schon den neuen.
         let wait = nextPaste.timeIntervalSinceNow
         if wait > 0 {
-            DispatchQueue.main.asyncAfter(deadline: .now() + wait) { paste(text, into: target, send: send, missed: missed) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + wait) { paste(text, into: target, send: send, missed: missed, pasted: pasted) }
             return
         }
         guard hasKeyboard(target) else { return missed() }
@@ -218,8 +242,13 @@ enum TextInsertion {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
             guard hasKeyboard(target) else { return missed() }
             pressCommandV()
+            guard send else { return pasted(false) }
             // Erst abschicken, wenn die App den Text eingesetzt hat.
-            if send { DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { if hasKeyboard(target) { pressReturn() } } }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                let sent = hasKeyboard(target)
+                if sent { pressReturn() }
+                pasted(sent)
+            }
         }
 
         let restore = DispatchWorkItem {
@@ -277,6 +306,13 @@ enum TextInsertion {
             if key == v || down { event.flags = .maskCommand }
             event.post(tap: .cghidEventTap)
         }
+    }
+
+    /// Ein verschlucktes Return, das doch nichts abschickt, bekommt die App zurück – aber nur die, in der es gedrückt
+    /// wurde, und nie bei sicherer Tastatureingabe. Nur auf dem Hauptthread.
+    static func pressReturn(in receiver: Receiver) {
+        guard !IsSecureEventInputEnabled(), keyboardReceiver == receiver else { return }
+        pressReturn()
     }
 
     /// Wie ⌘V markiert, damit der eigene Tastatur-Abgriff es durchlässt.

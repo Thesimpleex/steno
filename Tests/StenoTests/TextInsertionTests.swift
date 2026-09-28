@@ -36,6 +36,17 @@ final class TextInsertionTests: XCTestCase {
         XCTAssertFalse(target.isCurrent(frontmost: .current, ownField: false), "das Feld ist schon zu")
     }
 
+    /// Return geht nur an die App, in der es gedrückt wurde – nicht an eine, zu der man inzwischen gewechselt hat.
+    func testSendsOnlyToTheAppWhereReturnWasPressed() throws {
+        let (slack, terminal) = try twoOtherApps()
+        let receiver = TextInsertion.Receiver(slack)
+        XCTAssertTrue(TextInsertion.Target(canType: true, app: slack).belongs(to: receiver))
+        XCTAssertFalse(TextInsertion.Target(canType: true, app: terminal).belongs(to: receiver))
+        XCTAssertFalse(TextInsertion.Target().belongs(to: receiver), "nichts gefunden")
+        XCTAssertFalse(TextInsertion.Target(canType: true, app: .current).belongs(to: receiver), "jetzt im Notizfeld")
+        XCTAssertTrue(TextInsertion.Target(canType: true, app: .current).belongs(to: TextInsertion.Receiver(.current)))
+    }
+
     private func twoOtherApps() throws -> (NSRunningApplication, NSRunningApplication) {
         let apps = NSWorkspace.shared.runningApplications.filter { $0 != .current }
         guard apps.count >= 2 else { throw XCTSkip("braucht zwei laufende Apps") }

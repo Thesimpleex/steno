@@ -105,6 +105,39 @@ final class HotKeyMonitorTests: XCTestCase {
         XCTAssertEqual(drain(), ["down", "send", "up"])
     }
 
+    /// ⇧↩ ist in Slack eine neue Zeile, ⌘↩ und ⌃↩ haben eigene Bedeutungen – die gehen unverändert an die App.
+    func testReturnWithModifiersBelongsToTheApp() {
+        monitor.isRecording = true
+        for modifier in [CGEventFlags.maskShift, .maskCommand, .maskControl] {
+            XCTAssertFalse(press(36, modifier.rawValue), "\(modifier)")
+        }
+        XCTAssertTrue(press(36, CGEventFlags.maskAlternate.rawValue), "⌥ stört nicht")
+        XCTAssertEqual(drain(), ["send"])
+    }
+
+    /// Ist die Diktier-Taste selbst ⇧, ⌘ oder ⌃, zählt sie nicht als Zusatztaste – die andere Seite aber schon.
+    func testHeldDictationKeyIsNotAModifier() {
+        for key in HotKey.allCases {
+            XCTAssertTrue(HotKeyMonitor.isPlainReturn(CGEventFlags(rawValue: down(key)), holding: key), "\(key)")
+        }
+        let bothShifts = CGEventFlags(rawValue: down(.rightShift) | 0x02)
+        XCTAssertFalse(HotKeyMonitor.isPlainReturn(bothShifts, holding: .rightShift), "linke ⇧ dazu")
+        XCTAssertFalse(HotKeyMonitor.isPlainReturn(CGEventFlags(rawValue: down(.rightShift)), holding: nil),
+                       "freihändig ist ⇧ eine Zusatztaste")
+        XCTAssertFalse(HotKeyMonitor.isPlainReturn(CGEventFlags(rawValue: down(.leftOption) | 0x02 | CGEventFlags.maskShift.rawValue),
+                                                   holding: .leftOption))
+    }
+
+    func testReturnWithModifierWhileHoldingIsLetThrough() {
+        monitor.hotKey = .rightCommand
+        flags(HotKey.rightCommand.keyCode, down(.rightCommand))
+        monitor.isRecording = true
+        XCTAssertTrue(press(36, down(.rightCommand)), "die gehaltene ⌘ ist die Diktier-Taste")
+        XCTAssertFalse(press(36, down(.rightCommand) | 0x02 | CGEventFlags.maskShift.rawValue), "⇧↩ bleibt der App")
+        flags(HotKey.rightCommand.keyCode, 0)
+        XCTAssertEqual(drain(), ["down", "send", "chord", "up"])
+    }
+
     func testNoteShortcutOnlyDuringMeeting() {
         let chord = CGEventFlags.maskControl.rawValue | CGEventFlags.maskAlternate.rawValue
         let n = Int64(KeyLayout.n)

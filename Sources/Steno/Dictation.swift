@@ -47,17 +47,18 @@ final class Dictation {
     /// Hält den Bildschirm wach, solange aufgenommen wird – sonst würde die Sperre eine lange Aufnahme beenden.
     private var awake: NSObjectProtocol?
     /// Aufnahme, die fertig wurde, während gerade das Modell gewechselt wurde.
-    private var queuedAudio: (samples: [Float], send: Bool)?
-    /// Während der Aufnahme kam Return: Der Text wird nach dem Einfügen abgeschickt.
-    private var sendAfterwards = false
+    private var queuedAudio: (samples: [Float], send: TextInsertion.Receiver?)?
+    /// Während der Aufnahme kam Return: Der Text wird nach dem Einfügen abgeschickt – aber nur in der App, die beim
+    /// Druck auf Return die Tastatur hatte.
+    private var sendAfterwards: TextInsertion.Receiver?
     /// Bei längeren Aufnahmen läuft das Mikrofon nach dem Loslassen kurz weiter: Wer die Taste nur aus Versehen
     /// losgelassen hat und gleich wieder drückt, diktiert einfach weiter.
     private var releaseGrace: DispatchWorkItem?
     /// Die dabei schon vorgezogene Umwandlung – so kostet die Schonfrist keine Wartezeit.
     private var graceEarly: (id: Int, text: String?, cancellation: Cancellation)?
     /// Vorgezogene Umwandlungen, deren Frist abgelaufen ist und deren Text noch kommt – er wird auf jeden Fall geliefert
-    /// (true: und danach abgeschickt).
-    private var awaitingEarly: [Int: Bool] = [:]
+    /// (mit App: und danach dort abgeschickt).
+    private var awaitingEarly: [Int: TextInsertion.Receiver?] = [:]
     private var earlyCount = 0
     /// Umwandlungen, deren Ergebnis noch aussteht – solange zeigt die Anzeige „arbeitet“ statt zu verschwinden.
     private var working = 0
@@ -149,6 +150,7 @@ final class Dictation {
         case .holding:
             if held < Timing.tap, !chordInPress {
                 cancelRecording(keepOverlay: true)
+                passOnReturn(sendAfterwards)
                 registerTap(at: time)
             } else if Date.now.timeIntervalSince(startedAt) >= Timing.graceAfter, transcriber != nil {
                 beginReleaseGrace()
@@ -188,8 +190,9 @@ final class Dictation {
 
     /// Return: freihändig endet die Aufnahme damit wie mit einem Tippen, gehalten wie gewohnt beim Loslassen.
     private func send() {
-        guard mode != .idle else { return }
-        sendAfterwards = true
+        // Die Aufnahme ist schon vorbei (Loslassen kam zuerst an): Das verschluckte Return gehört der App.
+        guard mode != .idle else { return TextInsertion.pressReturn(in: TextInsertion.keyboardReceiver) }
+        sendAfterwards = TextInsertion.keyboardReceiver
         if mode == .handsFree { finishRecording() } else { overlay.showSendHint() }
     }
 
@@ -230,7 +233,7 @@ final class Dictation {
         resumed = resumable
         startedAt = .now - (resumed?.duration ?? 0)
         mode = newMode
-        sendAfterwards = false
+        sendAfterwards = nil
         // Erst die Anzeige, dann das Mikrofon: Wie lange das Gerät zum Starten braucht, schwankt.
         overlay.showRecording(handsFree: newMode == .handsFree, since: startedAt)
         microphone.startInBackground()
@@ -348,7 +351,10 @@ final class Dictation {
         resumable = nil
         resumeExpiry?.cancel()
         Sound.stop.play()
-        guard duration >= Timing.tap, samples.count >= 4_000 else { return showPendingOrHide() }
+        guard duration >= Timing.tap, samples.count >= 4_000 else {
+            passOnReturn(sendAfterwards)
+            return showPendingOrHide()
+        }
         guard transcriber != nil else {
             // Das Modell wird gerade gewechselt – die Aufnahme wartet darauf.
             queuedAudio = (samples, sendAfterwards)
@@ -357,7 +363,7 @@ final class Dictation {
         transcribe(samples, send: sendAfterwards)
     }
 
-    private func transcribe(_ samples: [Float], send: Bool) {
+    private func transcribe(_ samples: [Float], send: TextInsertion.Receiver?) {
         overlay.showWorking()
         working += 1
         runTranscription(samples) { [weak self] text in
@@ -384,14 +390,15 @@ final class Dictation {
     // MARK: Ergebnis
 
     /// Wohin der Text geht, klären die Bedienungshilfen im Hintergrund; entschieden wird erst mit ihrer Antwort.
-    /// `send`: nach dem Einfügen abschicken – nur, wenn wirklich eingefügt wurde.
-    private func deliver(_ result: String, send: Bool) {
+    /// `send`: nach dem Einfügen abschicken – nur, wenn wirklich eingefügt wurde, und nur in der App, in der Return
+    /// gedrückt wurde. Wer inzwischen gewechselt hat (Slack → Terminal), bekommt den Text ohne Return.
+    private func deliver(_ result: String, send: TextInsertion.Receiver?) {
         TextInsertion.inspect(probe: Settings.autoInsert) { [weak self] target in
             self?.deliver(result, to: target, send: send)
         }
     }
 
-    private func deliver(_ result: String, to target: TextInsertion.Target, send: Bool) {
+    private func deliver(_ result: String, to target: TextInsertion.Target, send: TextInsertion.Receiver?) {
         let recordingAgain = mode != .idle  // schon das nächste Diktat angefangen: Anzeige nicht anfassen
         // Ein zurückgehaltenes Ergebnis aus der Zeit davor gehört mit dazu.
         var text = result
@@ -400,6 +407,7 @@ final class Dictation {
             text = [pending, result].filter { !$0.isEmpty }.joined(separator: "\n")
         }
         guard !text.isEmpty else {
+            passOnReturn(send)
             if !recordingAgain { overlay.showMessage(L("Nichts verstanden"), seconds: 1.2) }
             return
         }
@@ -409,7 +417,8 @@ final class Dictation {
         if target.canType {  // nur gefragt, wenn eingefügt werden soll
             if !recordingAgain { working > 0 ? overlay.showWorking() : overlay.hide() }
             // Abgeschickt wird nur, was gerade diktiert wurde – nicht ein zurückgehaltener Text allein.
-            insert(text, at: target, send: send && !result.isEmpty) { [weak self] in self?.show(text) }
+            let sendHere = send.map(target.belongs(to:)) ?? false
+            insert(text, at: target, send: sendHere && !result.isEmpty) { [weak self] in self?.show(text) }
         } else {
             show(text)
         }
@@ -443,9 +452,14 @@ final class Dictation {
     /// `missed`: Die Tastatur ist inzwischen bei einer anderen App, eingefügt wurde nichts.
     private func insert(_ text: String, at target: TextInsertion.Target, send: Bool = false, missed: @escaping () -> Void) {
         let app = target.app?.bundleIdentifier
+        // Gemerkt wird nur, was wirklich angekommen ist – sonst bekäme das nächste Diktat ein falsches Leerzeichen.
         TextInsertion.paste(spacing.needed(before: target.characterBefore, in: app) ? " " + text : text, into: target, send: send,
-                            missed: missed)
-        spacing.inserted(in: app, sent: send)
+                            missed: missed) { [weak self] sent in self?.spacing.inserted(in: app, sent: sent) }
+    }
+
+    /// Return wurde verschluckt, aber es wird nichts abgeschickt: Dann bekommt die App ihr Return doch noch.
+    private func passOnReturn(_ receiver: TextInsertion.Receiver?) {
+        if let receiver { TextInsertion.pressReturn(in: receiver) }
     }
 
     private func schedule(_ slot: inout DispatchWorkItem?, after seconds: Double, _ action: @escaping () -> Void) {
