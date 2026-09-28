@@ -73,9 +73,9 @@ final class MeetingSessionTests: XCTestCase {
         XCTAssertEqual([you.starts, others.starts], [1, 0])
     }
 
-    /// Wartet der Ton des Macs auf die Freigabe, bleibt der Hauptthread frei. Das Meeting beginnt erst mit der Antwort;
+    /// Braucht eine Quelle lange zum Anlaufen, bleibt der Hauptthread frei. Das Meeting beginnt erst, wenn alle laufen;
     /// was das Mikrofon bis dahin hört, gehört nicht dazu, und ein zweiter Klick startet nichts noch einmal.
-    func testWaitingForPermissionKeepsTheMainThreadFree() {
+    func testSlowStartKeepsTheMainThreadFree() {
         let permission = DispatchSemaphore(value: 0)
         others.waitsFor = permission
         var answers = 0
@@ -221,6 +221,29 @@ final class MeetingSessionTests: XCTestCase {
         XCTAssertEqual(session.entries.count, 3)
     }
 
+    /// Lädt nach einem gescheiterten Wechsel kein Modell mehr, bleibt das Beenden nicht ewig hängen. Die Seite danach
+    /// sagt, dass etwas fehlt; kommt wieder ein Modell, verschwindet die Meldung.
+    func testFinishingGivesUpWhenNoModelComes() throws {
+        session.modelGrace = 0.3
+        try start(.microphone)
+        session.addNote("vorher")
+        let whisper = session.transcription
+        session.transcription = nil
+        you.play(TestAudio.speech(6) + TestAudio.silence(1))
+        session.stop()
+        RunLoop.main.run(until: .now + 0.1)
+        XCTAssertEqual(session.state, .finishing, "erst eine Weile auf das Modell warten")
+        wait { self.session.state == .idle }
+        XCTAssertEqual(session.state, .idle)
+        let missing = L("Kein Sprachmodell geladen – ein Teil des Meetings fehlt.")
+        XCTAssertEqual(session.startError, missing)
+        XCTAssertEqual(session.problem, missing)
+        XCTAssertEqual(try XCTUnwrap(files.writes.last).entries.map(\.kind), [.note("vorher")], "das Übrige ist gespeichert")
+
+        session.transcription = whisper
+        XCTAssertNil(session.problem)
+    }
+
     func testFallingBehindKeepsEverything() throws {
         var answers: [(String?) -> Void] = []
         session.transcription = { _, done in answers.append(done) }
@@ -244,7 +267,7 @@ final class MeetingSessionTests: XCTestCase {
 
         others.failure = MeetingError.systemAudioDenied
         center.post(name: NSWorkspace.didWakeNotification, object: nil)
-        RunLoop.main.run(until: .now + 0.05)
+        wait { self.you.starts == 2 && self.session.problem != nil }
         XCTAssertEqual(you.starts, 2)
         XCTAssertEqual(session.problem, L("Vom Ton des Macs kommt gerade nichts an."))
 
@@ -264,6 +287,65 @@ final class MeetingSessionTests: XCTestCase {
         XCTAssertLessThan(Date.now.timeIntervalSince(begin), 1)
         XCTAssertEqual(session.state, .finishing)
         XCTAssertGreaterThan(try XCTUnwrap(files.writes.last).info.duration, 0)
+    }
+
+    /// Eine Änderung nach dem Ende, deren Speichern noch aussteht, geht beim Beenden der App nicht verloren.
+    func testQuittingSavesAnEditAfterTheMeeting() throws {
+        try start(.microphone)
+        session.stop()
+        wait { self.session.state == .idle }
+        let saved = files.writes.count
+        session.rename(others: "Herr Meier")
+        session.shutdown(waitingAtMost: 0.3)
+        XCTAssertEqual(files.writes.count, saved + 1)
+        XCTAssertEqual(files.writes.last?.info.othersName, "Herr Meier")
+    }
+
+    /// Liefert das Mikrofon nichts, wird es im Hintergrund neu gestartet: Hängt das Anlaufen, bleibt die App bedienbar,
+    /// und es läuft nie mehr als ein Neustart zugleich.
+    func testRestartRunsInTheBackground() throws {
+        try start(.microphone)
+        let stuck = DispatchSemaphore(value: 0)
+        you.waitsFor = stuck
+        defer { stuck.signal() }
+        wait(seconds: 8) { self.you.stops == 1 }
+        XCTAssertEqual(you.stops, 1, "nach fünf Sekunden ohne Ton angehalten, der Start hängt")
+        let begin = Date.now
+        session.addNote("geht noch")
+        XCTAssertLessThan(Date.now.timeIntervalSince(begin), 0.1)
+        XCTAssertEqual(session.entries.map(\.kind), [.note("geht noch")])
+
+        you.waitsFor = nil
+        stuck.signal()
+        wait { self.you.starts == 2 }
+        XCTAssertEqual([you.starts, you.stops], [2, 1])
+    }
+
+    /// Die Meldungen wechseln sich nicht ab: Dass nicht gespeichert werden kann, verdrängt der Hinweis auf die Freigabe
+    /// nicht. Klappt das Speichern wieder, verschwindet die Meldung. Scheitert es nach dem Ende, zeigt es die Seite.
+    func testSaveProblemOutranksOthersAndClears() throws {
+        others.lacksPermission = true
+        try start(.systemAudio)
+        let hint = MeetingError.systemAudioDenied.errorDescription
+        XCTAssertEqual(session.problem, hint)
+
+        files.writeFails = true
+        session.addNote("eins")
+        let unsaved = MeetingError.folderUnavailable("Meeting").errorDescription
+        wait { self.session.problem == unsaved }
+        XCTAssertEqual(session.problem, unsaved)
+        RunLoop.main.run(until: .now + 2.5)
+        XCTAssertEqual(session.problem, unsaved, "der Wächter überschreibt sie nicht")
+
+        files.writeFails = false
+        session.addNote("zwei")
+        wait(seconds: 5) { self.session.problem == hint }
+        XCTAssertEqual(session.problem, hint)
+
+        files.writeFails = true
+        session.stop()
+        wait { self.session.state == .idle }
+        XCTAssertEqual(session.startError, unsaved)
     }
 
     // MARK: Notizen, Bilder, Speichern
@@ -366,18 +448,22 @@ private final class FakeSource: AudioSource {
     var onLevel: ((Float) -> Void)?
     var failure: Error?
     var lacksPermission = false
-    /// Hält den Start auf wie die Frage nach der Freigabe.
+    /// Hält den Start auf wie ein Mikrofon, das lange zum Anlaufen braucht.
     var waitsFor: DispatchSemaphore?
-    private(set) var starts = 0
-    private(set) var stops = 0
+    private let lock = NSLock()
+    private var started = 0
+    private var stopped = 0
+    // Gestartet und gestoppt wird auch im Hintergrund.
+    var starts: Int { lock.withLock { started } }
+    var stops: Int { lock.withLock { stopped } }
 
     func start() throws {
         waitsFor?.wait()
         if let failure { throw failure }
-        starts += 1
+        lock.withLock { started += 1 }
     }
 
-    func stopCapture() { stops += 1 }
+    func stopCapture() { lock.withLock { stopped += 1 } }
 
     func play(_ samples: [Float]) { onSamples?(samples) }
 }
@@ -388,8 +474,14 @@ private final class FakeFiling {
     private let lock = NSLock()
     private var written: [MeetingFile] = []
     private var images = 0
+    private var failing = false
 
     var writes: [MeetingFile] { lock.withLock { written } }
+    /// Wie ein Ordner, der verschwunden ist: Jedes Speichern scheitert.
+    var writeFails: Bool {
+        get { lock.withLock { failing } }
+        set { lock.withLock { failing = newValue } }
+    }
 
     var filing: MeetingSession.Filing {
         MeetingSession.Filing(
@@ -397,7 +489,12 @@ private final class FakeFiling {
                 if let folderFailure { throw folderFailure }
                 return URL(fileURLWithPath: "/nonexistent/Meeting", isDirectory: true)
             },
-            write: { [unowned self] file, _ in lock.withLock { written.append(file) } },
+            write: { [unowned self] file, folder in
+                try lock.withLock {
+                    if failing { throw MeetingError.folderUnavailable(folder.lastPathComponent) }
+                    written.append(file)
+                }
+            },
             saveImage: { [unowned self] _, _, _ in
                 lock.withLock {
                     images += 1

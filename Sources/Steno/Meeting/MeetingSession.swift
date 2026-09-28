@@ -29,7 +29,7 @@ final class MeetingSession: ObservableObject {
     @Published private(set) var levels = MeetingLevels()
     /// Eine Meldung für die Oberfläche, etwa wenn während des Meetings eine Quelle ausfällt.
     @Published private(set) var problem: String?
-    /// Die Quellen starten gerade im Hintergrund – beim ersten Mal kann das ein paar Sekunden dauern.
+    /// Die Quellen starten gerade im Hintergrund – das Mikrofon braucht dafür einen Moment.
     @Published private(set) var isStarting = false
     /// Warum der letzte Start scheiterte; bleibt stehen, bis erneut gestartet wird oder die Seite es zurücksetzt.
     @Published var startError: String?
@@ -44,6 +44,7 @@ final class MeetingSession: ObservableObject {
     var transcription: Transcription? {
         didSet {
             generation += 1
+            if transcription != nil { dismiss(Self.noModel) }
             let held = waiting
             waiting = []
             held.forEach(send)
@@ -70,6 +71,10 @@ final class MeetingSession: ObservableObject {
     private var flushed = false
     private var asleep = false
     private var saveWork: DispatchWorkItem?
+    /// Beendet ein Meeting, das zu lange auf ein Modell wartet.
+    private var giveUp: DispatchWorkItem?
+    /// Quellen, die gerade im Hintergrund (neu) starten.
+    private var launching: Set<Speaker> = []
     private var observers: [NSObjectProtocol] = []
     private var watchdog: Timer?
     private var activity: NSObjectProtocol?
@@ -79,6 +84,9 @@ final class MeetingSession: ObservableObject {
     private var nextLevels: TimeInterval = 0
     // Nur auf `storage`:
     private var lastImage: Int?
+
+    /// Wie lange das Beenden auf ein Modell wartet, etwa während eines Wechsels. Die Tests kürzen das.
+    var modelGrace: TimeInterval = 30
 
     /// Vorschaubilder und Tests geben einen fertigen Zustand vor, Tests auch Attrappen für Tonquellen und Ablage.
     init(state: State = .idle, info: MeetingInfo = MeetingInfo(title: "", startedAt: .now, sources: []),
@@ -95,9 +103,8 @@ final class MeetingSession: ObservableObject {
         hook(systemAudio, as: .others)
     }
 
-    /// Beginnt ein Meeting. Die Quellen starten im Hintergrund: Beim ersten Mal wartet der Ton des Macs, bis die Frage
-    /// nach der Freigabe beantwortet ist. `done` kommt auf dem Hauptthread, mit dem Fehler, wenn Modell, Freigabe oder
-    /// Ordner fehlen; der Fehler steht dann auch in `startError`. Ein weiterer Aufruf, solange noch gestartet wird,
+    /// Beginnt ein Meeting. Die Quellen starten im Hintergrund, denn das Mikrofon blockiert beim Anlaufen.
+    /// `done` kommt auf dem Hauptthread, mit dem Fehler, wenn Modell, Freigabe oder Ordner fehlen; der Fehler steht dann auch in `startError`. Ein weiterer Aufruf, solange noch gestartet wird,
     /// bleibt ohne Wirkung und ohne Antwort.
     func start(title: String, sources wanted: MeetingSources, done: @escaping (Error?) -> Void) {
         guard !isStarting else { return }
@@ -147,11 +154,13 @@ final class MeetingSession: ObservableObject {
         }
     }
 
-    /// Die Quellen laufen, der Ordner steht. Erst ab hier zählt ihr Ton – was davor kam, etwa während macOS nach der
-    /// Freigabe fragte, gehört noch zu keinem Meeting.
+    /// Die Quellen laufen, der Ordner steht. Erst ab hier zählt ihr Ton – was beim Anlaufen kam, gehört noch zu
+    /// keinem Meeting.
     private func begin(_ info: MeetingInfo, sources chosen: [Speaker: AudioSource], in folder: URL) {
+        let now = elapsed
         work.sync {
-            tracks = chosen.mapValues { _ in Track() }
+            // Der Wächter misst ab jetzt, nicht ab dem Klick – das Anlaufen ist kein Aussetzer.
+            tracks = chosen.mapValues { _ in Track(lastBuffer: now) }
             latest = MeetingLevels()
             nextLevels = 0
         }
@@ -163,6 +172,8 @@ final class MeetingSession: ObservableObject {
         levels = MeetingLevels()
         backlog = 0
         asleep = false
+        giveUp?.cancel()
+        giveUp = nil
         state = .running
         checkPermission()
         storage.async { self.lastImage = nil }
@@ -197,7 +208,8 @@ final class MeetingSession: ObservableObject {
         stop()
         let deadline = Date.now.addingTimeInterval(seconds)
         while state == .finishing, Date.now < deadline { RunLoop.main.run(until: .now + 0.05) }
-        guard state == .finishing else { return }
+        // Auch eine Änderung nach dem Ende, deren Speichern noch aussteht, darf nicht verloren gehen.
+        guard saveWork != nil || state == .finishing else { return }
         save()
         storage.sync {}
     }
@@ -263,7 +275,7 @@ final class MeetingSession: ObservableObject {
         let chunks = track.append(samples, at: time)
         guard recovered || !chunks.isEmpty else { return }
         DispatchQueue.main.async {
-            if recovered, self.problem == Self.failure(of: speaker) { self.problem = nil }
+            if recovered { self.dismiss(Self.failure(of: speaker)) }
             chunks.forEach { self.send(Piece(speaker: speaker, chunk: $0)) }
         }
     }
@@ -305,7 +317,7 @@ final class MeetingSession: ObservableObject {
         pending += 1
         backlog += piece.chunk.duration
         // Kommt Whisper nicht mit, bleibt alles liegen, bis es dran ist – nur Bescheid sagen.
-        if backlog > 90, problem == nil { problem = Self.behind }
+        if backlog > 90 { report(Self.behind) }
         transcription(piece.chunk.samples) { [weak self] text in
             DispatchQueue.main.async { self?.transcribed(piece, text) }
         }
@@ -314,7 +326,7 @@ final class MeetingSession: ObservableObject {
     private func transcribed(_ piece: Piece, _ text: String?) {
         pending -= 1
         backlog -= piece.chunk.duration
-        if backlog < 30, problem == Self.behind { problem = nil }
+        if backlog < 30 { dismiss(Self.behind) }
         if let text {
             if !text.isEmpty { entries.addSpeech(text, by: piece.speaker, at: piece.chunk.offset) }
         } else if piece.generation == generation {
@@ -330,14 +342,18 @@ final class MeetingSession: ObservableObject {
         waiting.append(piece)
         while waiting.reduce(0, { $0 + $1.chunk.duration }) > 300 {
             waiting.removeFirst()
-            problem = L("Kein Sprachmodell geladen – ein Teil des Meetings fehlt.")
+            report(Self.noModel)
         }
     }
 
     private static var behind: String { L("Die Umwandlung kommt nicht hinterher – der Text folgt etwas später.") }
+    private static var noModel: String { L("Kein Sprachmodell geladen – ein Teil des Meetings fehlt.") }
 
     private func finishIfDone() {
-        guard state == .finishing, flushed, pending == 0, waiting.isEmpty else { return }
+        guard state == .finishing, flushed, pending == 0 else { return }
+        guard waiting.isEmpty else { return awaitModel() }
+        giveUp?.cancel()
+        giveUp = nil
         flushed = false
         save()
         storage.async {
@@ -347,6 +363,52 @@ final class MeetingSession: ObservableObject {
                 self.activity = nil
             }
         }
+    }
+
+    /// Beenden wartet auf ein Modell, aber nicht ewig: Lädt keins mehr, fehlt der Rest, und ein neues Meeting lässt
+    /// sich wieder starten. Die Meetings-Seite zeigt danach, dass etwas fehlt.
+    private func awaitModel() {
+        guard giveUp == nil else { return }
+        let item = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.giveUp = nil
+            guard self.state == .finishing, !self.waiting.isEmpty else { return }
+            self.waiting = []
+            self.report(Self.noModel)
+            self.startError = Self.noModel
+            self.finishIfDone()
+        }
+        giveUp = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + modelGrace, execute: item)
+    }
+
+    // MARK: Meldungen
+
+    /// Wichtigeres verdrängt Unwichtigeres, nie umgekehrt – sonst wechselten sich die Meldungen alle zwei Sekunden ab.
+    private func report(_ message: String?) {
+        guard let message, problem != message else { return }
+        if let problem, Self.rank(problem) > Self.rank(message) { return }
+        problem = message
+    }
+
+    /// Nimmt nur diese Meldung zurück, keine andere.
+    private func dismiss(_ message: String?) {
+        if let message, problem == message { problem = nil }
+    }
+
+    /// Speichern vor fehlendem Modell vor ausgefallener Quelle vor fehlender Freigabe vor Rückstand.
+    private static func rank(_ message: String) -> Int {
+        switch message {
+        case behind: return 0
+        case MeetingError.systemAudioDenied.errorDescription: return 1
+        case failure(of: .you), failure(of: .others): return 2
+        case noModel: return 3
+        default: return 4
+        }
+    }
+
+    private static func unsaved(_ folder: URL) -> String? {
+        MeetingError.folderUnavailable(folder.lastPathComponent).errorDescription
     }
 
     // MARK: Speichern
@@ -371,10 +433,18 @@ final class MeetingSession: ObservableObject {
 
     /// Auf `storage`.
     private func write(_ file: MeetingFile, to folder: URL) {
-        do {
-            try filing.write(file, folder)
-        } catch {
-            DispatchQueue.main.async { self.problem = MeetingError.folderUnavailable(folder.lastPathComponent).errorDescription }
+        let saved = (try? filing.write(file, folder)) != nil
+        DispatchQueue.main.async {
+            guard folder == self.folder else { return }  // inzwischen läuft ein anderes Meeting
+            let message = Self.unsaved(folder)
+            if saved {
+                self.dismiss(message)
+                if self.startError == message { self.startError = nil }
+            } else {
+                self.report(message)
+                // Nach dem Ende sähe die Meldung sonst niemand; die Meetings-Seite zeigt `startError`.
+                if self.state != .running { self.startError = message }
+            }
         }
     }
 
@@ -390,7 +460,7 @@ final class MeetingSession: ObservableObject {
             lastImage = hash
             return name
         } catch {
-            DispatchQueue.main.async { self.problem = MeetingError.folderUnavailable(folder.lastPathComponent).errorDescription }
+            DispatchQueue.main.async { self.report(Self.unsaved(folder)) }
             return nil
         }
     }
@@ -433,9 +503,7 @@ final class MeetingSession: ObservableObject {
         asleep = false
         let now = elapsed
         work.async { self.tracks.values.forEach { $0.lastBuffer = now } }  // Zeit zum Anlaufen
-        for (speaker, source) in sources {
-            do { try source.start() } catch { problem = Self.failure(of: speaker) }
-        }
+        sources.keys.forEach { launch($0, restart: false, repeated: false) }
     }
 
     /// Liefert eine Quelle fünf Sekunden lang nichts – etwa weil ein anderes Mikrofon angesteckt wurde –, wird sie neu
@@ -457,7 +525,7 @@ final class MeetingSession: ObservableObject {
             DispatchQueue.main.async {
                 guard self.state == .running, !self.asleep else { return }
                 self.levels = levels
-                repeated.forEach { self.restart($0.key, repeated: $0.value) }
+                repeated.forEach { self.launch($0.key, restart: true, repeated: $0.value) }
             }
         }
     }
@@ -466,22 +534,27 @@ final class MeetingSession: ObservableObject {
     /// sobald macOS die Freigabe erteilt.
     private func checkPermission() {
         let hint = MeetingError.systemAudioDenied.errorDescription
-        if sources.values.contains(where: \.lacksPermission) {
-            if problem != hint { problem = hint }
-        } else if problem == hint {
-            problem = nil
-        }
+        if sources.values.contains(where: \.lacksPermission) { report(hint) } else { dismiss(hint) }
     }
 
-    /// `repeated`: Der letzte Neustart hat nichts gebracht – dann Bescheid sagen und es weiter versuchen.
-    private func restart(_ speaker: Speaker, repeated: Bool) {
-        guard let source = sources[speaker] else { return }
-        source.stopCapture()
-        do {
-            try source.start()
-            if repeated { problem = Self.failure(of: speaker) }
-        } catch {
-            problem = Self.failure(of: speaker)
+    /// Startet eine Quelle im Hintergrund: Das Mikrofon blockiert beim Anlaufen, bei einem toten Gerät sonst alle fünf
+    /// Sekunden die ganze App. Je Quelle läuft höchstens ein Start. `repeated`: Der letzte Neustart hat nichts
+    /// gebracht – dann Bescheid sagen und es weiter versuchen.
+    private func launch(_ speaker: Speaker, restart: Bool, repeated: Bool) {
+        guard let source = sources[speaker], !launching.contains(speaker) else { return }
+        launching.insert(speaker)
+        DispatchQueue.global(qos: .userInitiated).async {
+            if restart { source.stopCapture() }
+            let started = (try? source.start()) != nil
+            DispatchQueue.main.async {
+                self.launching.remove(speaker)
+                // Inzwischen beendet oder eingeschlafen: Was eben angelaufen ist, gleich wieder anhalten.
+                guard self.state == .running, !self.asleep, self.sources[speaker] === source else {
+                    if started { source.stopCapture() }
+                    return
+                }
+                if !started || repeated { self.report(Self.failure(of: speaker)) }
+            }
         }
     }
 
@@ -506,9 +579,11 @@ final class MeetingSession: ObservableObject {
 
     /// Was je Quelle auf `work` mitläuft.
     private final class Track {
-        var lastBuffer: TimeInterval = 0
+        var lastBuffer: TimeInterval
         var stalls = 0  // Neustarts seit dem letzten Puffer
         private var chunker: Chunker?
+
+        init(lastBuffer: TimeInterval) { self.lastBuffer = lastBuffer }
 
         /// Der erste Puffer legt fest, wo der Ton auf der gemeinsamen Uhr liegt – ebenso jeder nach einer Lücke im
         /// Strom (Ruhezustand, Neustart der Quelle).

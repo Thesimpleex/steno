@@ -133,11 +133,21 @@ final class MeetingStoreTests: XCTestCase {
         XCTAssertTrue(try String(contentsOf: folder.appendingPathComponent("Protokoll.md"), encoding: .utf8).hasPrefix("# Neuer Titel\n"))
     }
 
-    func testWriteToMissingFolderThrows() {
-        let missing = root.appendingPathComponent("gibt es nicht", isDirectory: true)
-        XCTAssertThrowsError(try MeetingStore.write(sample, to: missing)) { error in
+    /// Verschoben oder von iCloud ausgelagert: Der Ordner entsteht neu, und das Speichern geht weiter.
+    func testWriteRecreatesAVanishedFolder() throws {
+        let folder = try MeetingStore.makeFolder(for: sample.info)
+        try files.removeItem(at: root)
+        try MeetingStore.write(sample, to: folder)
+        XCTAssertEqual(MeetingStore.read(folder), sample)
+    }
+
+    func testWriteWhereNoFolderCanBeThrows() throws {
+        try files.createDirectory(at: root, withIntermediateDirectories: true)
+        let blocked = root.appendingPathComponent("eine Datei", isDirectory: true)
+        try Data().write(to: blocked)
+        XCTAssertThrowsError(try MeetingStore.write(sample, to: blocked)) { error in
             guard case MeetingError.folderUnavailable(let name) = error else { return XCTFail("\(error)") }
-            XCTAssertEqual(name, "gibt es nicht")
+            XCTAssertEqual(name, "eine Datei")
         }
     }
 

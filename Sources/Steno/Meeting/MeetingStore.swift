@@ -27,12 +27,14 @@ enum MeetingStore {
         }
     }
 
-    /// Schreibt meeting.json und Protokoll.md, jeweils atomar.
+    /// Schreibt meeting.json und Protokoll.md, jeweils atomar. Fehlt der Ordner – verschoben oder von iCloud ausgelagert –,
+    /// wird er neu angelegt; sonst schlüge jedes weitere Speichern fehl.
     static func write(_ file: MeetingFile, to folder: URL) throws {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         encoder.dateEncodingStrategy = .iso8601
         do {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             try encoder.encode(file).write(to: folder.appendingPathComponent(MeetingFile.fileName), options: .atomic)
             try Data(MeetingMarkdown.render(file).utf8).write(to: folder.appendingPathComponent(MeetingFile.markdownName), options: .atomic)
         } catch {
