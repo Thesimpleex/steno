@@ -257,7 +257,7 @@
 "Es läuft schon ein Meeting." = "A meeting is already running.";
 "Mikrofon oder Mac-Ton muss eingeschaltet sein." = "Microphone or Mac sound must be on.";
 "Kein Mikrofonzugriff – bitte in den Systemeinstellungen erlauben." = "No microphone access – please allow it in System Settings.";
-"Keine Freigabe für den Ton des Macs – bitte in den Systemeinstellungen erlauben." = "No permission for your Mac’s sound – please allow it in System Settings.";
+"Keine Freigabe für den Ton des Macs – in den Systemeinstellungen unter „Bildschirm- & Audioaufnahme“ erlauben." = "No permission for your Mac’s sound – allow it in System Settings under “Screen & System Audio Recording”.";
 "Das Mikrofon lässt sich nicht starten." = "The microphone can’t be started.";
 "Der Ton des Macs lässt sich nicht aufnehmen." = "Your Mac’s sound can’t be recorded.";
 "Der Ordner „%@“ lässt sich nicht beschreiben." = "The folder “%@” can’t be written to.";
@@ -283,6 +283,7 @@
 "Der Ton des Macs: Teams, Zoom, der Browser …" = "Your Mac’s sound: Teams, Zoom, the browser…";
 "Nimm nur auf, wenn alle Beteiligten zustimmen (§ 201 StGB)." = "Only record if everyone involved agrees (§ 201 StGB, Germany).";
 "Meeting starten" = "Start Meeting";
+"Startet …" = "Starting…";
 "Noch keine Meetings." = "No meetings yet.";
 "Frühere Meetings" = "Earlier Meetings";
 "Ändern …" = "Change…";

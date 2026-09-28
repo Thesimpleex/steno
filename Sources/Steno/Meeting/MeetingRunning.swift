@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Die Laufzeit eines Meetings, jede Sekunde neu.
@@ -25,7 +26,7 @@ struct MeetingRunningView: View {
             InputField(placeholder: L("Teilnehmer"),
                        text: Binding(get: { meeting.info.participants }, set: meeting.setParticipants))
                 .disabled(!running)
-            if let problem = meeting.problem { banner(problem) }
+            if let problem = meeting.problem { MeetingBanner(text: problem) }
             timeline
             if running {
                 VStack(alignment: .leading, spacing: 8) {
@@ -103,21 +104,43 @@ struct MeetingRunningView: View {
         .frame(minHeight: 160, maxHeight: .infinity)
     }
 
-    private func banner(_ text: String) -> some View {
+    private func submit() {
+        meeting.addNote(note)
+        note = ""
+    }
+}
+
+/// Eine Meldung, die man nicht übersieht – beim Start und während des Meetings. Fehlt eine Freigabe, führt ein Knopf
+/// gleich an die richtige Stelle der Systemeinstellungen.
+struct MeetingBanner: View {
+    let text: String
+
+    private var pane: String? {
+        switch text {
+        case MeetingError.systemAudioDenied.errorDescription: return "Privacy_AudioCapture"
+        case MeetingError.microphoneDenied.errorDescription: return "Privacy_Microphone"
+        default: return nil
+        }
+    }
+
+    var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 11.5))
             Text(text).font(.system(size: 12.5, weight: .medium)).lineLimit(3)
-            Spacer(minLength: 0)
+            Spacer(minLength: 8)
+            if let pane {
+                Button(L("Systemeinstellungen öffnen")) {
+                    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane)")!)
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 12, weight: .semibold))
+                .fixedSize()
+            }
         }
         .foregroundStyle(Theme.accentText)
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .background(Theme.accent.opacity(0.1), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-    }
-
-    private func submit() {
-        meeting.addNote(note)
-        note = ""
     }
 }
 

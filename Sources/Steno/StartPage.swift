@@ -87,9 +87,13 @@ struct StartPage: View {
         .padding(.horizontal, 4)
     }
 
-    /// Öffnet die Meetings-Seite; während eines Meetings zeigt die Karte stattdessen dessen Laufzeit.
+    /// Startet gleich ein Meeting und wechselt auf dessen Seite – dort steht auch, falls der Start scheitert. Während
+    /// eines Meetings zeigt die Karte stattdessen dessen Laufzeit.
     private var meetingCard: some View {
-        Button { navigation.page = .meetings } label: {
+        Button {
+            if meeting.state == .idle { meeting.start() }
+            navigation.page = .meetings
+        } label: {
             HStack(spacing: 14) {
                 if meeting.state == .idle {
                     IconBadge(symbol: "person.2", size: 36)

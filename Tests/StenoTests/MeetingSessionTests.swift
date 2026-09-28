@@ -80,15 +80,18 @@ final class MeetingSessionTests: XCTestCase {
         others.waitsFor = permission
         var answers = 0
         session.start(title: "", sources: [.microphone, .systemAudio]) { _ in answers += 1 }
+        XCTAssertTrue(session.isStarting, "die Seite zeigt, dass gestartet wird")
         session.start(title: "", sources: [.microphone, .systemAudio]) { _ in answers += 1 }
         you.play(TestAudio.speech(6) + TestAudio.silence(1))
         RunLoop.main.run(until: .now + 0.1)
         XCTAssertEqual(session.state, .idle)
         XCTAssertEqual(answers, 0)
+        XCTAssertTrue(session.isStarting)
 
         permission.signal()
         wait { answers == 1 }
         XCTAssertEqual(session.state, .running)
+        XCTAssertFalse(session.isStarting)
         RunLoop.main.run(until: .now + 0.1)
         XCTAssertEqual(session.entries, [])
         XCTAssertEqual([answers, you.starts, others.starts], [1, 1, 1])
@@ -98,6 +101,8 @@ final class MeetingSessionTests: XCTestCase {
         others.failure = MeetingError.systemAudioDenied
         assertThrows(.systemAudioDenied) { try start([.microphone, .systemAudio]) }
         XCTAssertEqual(you.starts, you.stops, "was schon lief, ist wieder aus")
+        XCTAssertFalse(session.isStarting)
+        XCTAssertEqual(session.startError, MeetingError.systemAudioDenied.errorDescription, "die Seite zeigt den Grund")
 
         others.failure = nil
         files.folderFailure = MeetingError.folderUnavailable("Steno Meetings")
@@ -116,6 +121,27 @@ final class MeetingSessionTests: XCTestCase {
         you.failure = Microphone.Failure.noInput
         assertThrows(.unavailable(.you)) { try start([.microphone, .systemAudio]) }
         XCTAssertEqual([you.starts, others.starts], [you.stops, others.stops])
+    }
+
+    /// Der Grund bleibt stehen, bis erneut gestartet wird – egal ob von der Meetings-Seite oder der Startseite.
+    func testNextStartClearsTheLastError() throws {
+        assertThrows(.noSource) { try start([]) }
+        XCTAssertEqual(session.startError, MeetingError.noSource.errorDescription)
+        try start(.microphone)
+        XCTAssertNil(session.startError)
+    }
+
+    /// Ohne Freigabe liefert der Ton des Macs nur Stille. Das sagt die Seite gleich und nimmt es zurück, sobald die
+    /// Freigabe da ist.
+    func testMissingPermissionIsShownUntilItArrives() throws {
+        others.lacksPermission = true
+        try start([.microphone, .systemAudio])
+        XCTAssertEqual(session.state, .running)
+        XCTAssertEqual(session.problem, MeetingError.systemAudioDenied.errorDescription)
+
+        others.lacksPermission = false
+        wait(seconds: 3) { self.session.problem == nil }
+        XCTAssertNil(session.problem)
     }
 
     func testRecordsBothSidesOnOneTimeline() throws {
@@ -302,9 +328,9 @@ final class MeetingSessionTests: XCTestCase {
         if let failure { throw failure }
     }
 
-    /// Lässt den Hauptthread laufen, bis die Bedingung gilt – höchstens zwei Sekunden.
-    private func wait(_ condition: () -> Bool) {
-        let deadline = Date.now.addingTimeInterval(2)
+    /// Lässt den Hauptthread laufen, bis die Bedingung gilt – im Normalfall höchstens zwei Sekunden.
+    private func wait(seconds: TimeInterval = 2, _ condition: () -> Bool) {
+        let deadline = Date.now.addingTimeInterval(seconds)
         while !condition(), Date.now < deadline { RunLoop.main.run(until: .now + 0.01) }
     }
 
@@ -336,6 +362,7 @@ private final class FakeSource: AudioSource {
     var onSamples: (([Float]) -> Void)?
     var onLevel: ((Float) -> Void)?
     var failure: Error?
+    var lacksPermission = false
     /// Hält den Start auf wie die Frage nach der Freigabe.
     var waitsFor: DispatchSemaphore?
     private(set) var starts = 0

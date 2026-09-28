@@ -12,6 +12,17 @@ extension Settings {
     }
 }
 
+extension MeetingSession {
+    /// Datum und Uhrzeit stehen ohnehin im Ordnernamen und in der Liste.
+    static var defaultTitle: String { L("Meeting") }
+
+    /// So starten Meetings-Seite und Startseite: mit den gemerkten Quellen, ohne Titel als „Meeting“.
+    func start(title: String = "", done: @escaping (Error?) -> Void = { _ in }) {
+        let name = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        start(title: name.isEmpty ? Self.defaultTitle : name, sources: Settings.meetingSources, done: done)
+    }
+}
+
 /// Die Ablage der Meetings anzeigen, wechseln und im Finder öffnen – für die Meetings-Seite und die Einstellungen.
 enum MeetingFolder {
     static var displayPath: String { (MeetingStore.root.path as NSString).abbreviatingWithTildeInPath }
@@ -43,7 +54,6 @@ struct MeetingsPage: View {
     @ObservedObject var library: MeetingLibrary
     @State private var title = ""
     @State private var sources = Settings.meetingSources
-    @State private var failure: String?
 
     var body: some View {
         Group {
@@ -74,12 +84,9 @@ struct MeetingsPage: View {
 
     // MARK: Starten
 
-    /// Datum und Uhrzeit stehen ohnehin im Ordnernamen und in der Liste.
-    private var defaultTitle: String { L("Meeting") }
-
     private var startCard: some View {
         VStack(alignment: .leading, spacing: 16) {
-            InputField(placeholder: defaultTitle, text: $title, onSubmit: start)
+            InputField(placeholder: MeetingSession.defaultTitle, text: $title, onSubmit: start)
                 .accessibilityLabel(L("Titel"))
             HStack(spacing: 24) {
                 sourceSwitch(L("Mikrofon"), help: L("Deine Stimme"), source: .microphone)
@@ -90,11 +97,21 @@ struct MeetingsPage: View {
                     .font(.system(size: 12)).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 12)
-                Button(L("Meeting starten"), action: start).buttonStyle(.pill(.primary, large: true))
+                Button(action: start) {
+                    // Beim ersten Mal wartet der Start auf die Frage nach der Freigabe; so sieht man, dass etwas passiert.
+                    if meeting.isStarting {
+                        HStack(spacing: 8) {
+                            ProgressView().controlSize(.small)
+                            Text(L("Startet …"))
+                        }
+                    } else {
+                        Text(L("Meeting starten"))
+                    }
+                }
+                .buttonStyle(.pill(.primary, large: true))
+                .disabled(meeting.isStarting)
             }
-            if let failure {
-                Text(failure).font(.system(size: 12)).foregroundStyle(Theme.accentText).fixedSize(horizontal: false, vertical: true)
-            }
+            if let failure = meeting.startError { MeetingBanner(text: failure) }
         }
         .card()
     }
@@ -103,7 +120,7 @@ struct MeetingsPage: View {
         let isOn = Binding(get: { sources.contains(source) }, set: { on in
             if on { sources.insert(source) } else { sources.remove(source) }
             Settings.meetingSources = sources
-            failure = nil
+            meeting.startError = nil
         })
         return HStack(spacing: 8) {
             Text(name).font(.system(size: 13.5))
@@ -113,10 +130,8 @@ struct MeetingsPage: View {
     }
 
     private func start() {
-        failure = nil
-        let name = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        meeting.start(title: name.isEmpty ? defaultTitle : name, sources: sources) { error in
-            if let error { failure = error.localizedDescription } else { title = "" }
+        meeting.start(title: title) { error in
+            if error == nil { title = "" }
         }
     }
 }

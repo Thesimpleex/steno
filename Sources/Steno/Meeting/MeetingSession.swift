@@ -29,6 +29,10 @@ final class MeetingSession: ObservableObject {
     @Published private(set) var levels = MeetingLevels()
     /// Eine Meldung für die Oberfläche, etwa wenn während des Meetings eine Quelle ausfällt.
     @Published private(set) var problem: String?
+    /// Die Quellen starten gerade im Hintergrund – beim ersten Mal kann das ein paar Sekunden dauern.
+    @Published private(set) var isStarting = false
+    /// Warum der letzte Start scheiterte; bleibt stehen, bis erneut gestartet wird oder die Seite es zurücksetzt.
+    @Published var startError: String?
 
     /// Ordner des laufenden oder zuletzt beendeten Meetings.
     private(set) var folder: URL?
@@ -64,8 +68,6 @@ final class MeetingSession: ObservableObject {
     private var generation = 0
     /// Nach `stop`: Es kommt kein Abschnitt mehr dazu.
     private var flushed = false
-    /// Die Quellen starten gerade im Hintergrund.
-    private var starting = false
     private var asleep = false
     private var saveWork: DispatchWorkItem?
     private var observers: [NSObjectProtocol] = []
@@ -95,9 +97,15 @@ final class MeetingSession: ObservableObject {
 
     /// Beginnt ein Meeting. Die Quellen starten im Hintergrund: Beim ersten Mal wartet der Ton des Macs, bis die Frage
     /// nach der Freigabe beantwortet ist. `done` kommt auf dem Hauptthread, mit dem Fehler, wenn Modell, Freigabe oder
-    /// Ordner fehlen. Ein weiterer Aufruf, solange noch gestartet wird, bleibt ohne Wirkung und ohne Antwort.
+    /// Ordner fehlen; der Fehler steht dann auch in `startError`. Ein weiterer Aufruf, solange noch gestartet wird,
+    /// bleibt ohne Wirkung und ohne Antwort.
     func start(title: String, sources wanted: MeetingSources, done: @escaping (Error?) -> Void) {
-        guard !starting else { return }
+        guard !isStarting else { return }
+        startError = nil
+        let done = { [weak self] (error: Error?) in
+            self?.startError = error?.localizedDescription
+            done(error)
+        }
         guard state == .idle else { return done(MeetingError.alreadyRunning) }
         guard transcription != nil else { return done(MeetingError.noModel) }
         guard !wanted.isEmpty else { return done(MeetingError.noSource) }
@@ -114,7 +122,7 @@ final class MeetingSession: ObservableObject {
 
         let info = MeetingInfo(title: title, startedAt: .now, sources: wanted)
         origin = Self.clock()
-        starting = true
+        isStarting = true
         DispatchQueue.global(qos: .userInitiated).async { [filing] in
             var started: [AudioSource] = []
             let result = Result {
@@ -128,7 +136,7 @@ final class MeetingSession: ObservableObject {
             }
             if case .failure = result { started.forEach { $0.stopCapture() } }
             DispatchQueue.main.async {
-                self.starting = false
+                self.isStarting = false
                 do {
                     self.begin(info, sources: chosen, in: try result.get())
                     done(nil)
@@ -156,6 +164,7 @@ final class MeetingSession: ObservableObject {
         backlog = 0
         asleep = false
         state = .running
+        checkPermission()
         storage.async { self.lastImage = nil }
         save()
         observe()
@@ -431,6 +440,7 @@ final class MeetingSession: ObservableObject {
     /// gestartet, notfalls immer wieder. Die andere läuft derweil weiter; die Meldung verschwindet, sobald wieder Ton kommt.
     private func checkSources() {
         guard !asleep else { return }
+        checkPermission()
         let now = elapsed
         work.async {
             let stalled = self.tracks.filter { now - $0.value.lastBuffer > 5 }
@@ -447,6 +457,17 @@ final class MeetingSession: ObservableObject {
                 self.levels = levels
                 repeated.forEach { self.restart($0.key, repeated: $0.value) }
             }
+        }
+    }
+
+    /// Ohne Freigabe liefert der Ton des Macs nur Stille – das fiele sonst niemandem auf. Die Meldung verschwindet,
+    /// sobald macOS die Freigabe erteilt.
+    private func checkPermission() {
+        let hint = MeetingError.systemAudioDenied.errorDescription
+        if sources.values.contains(where: \.lacksPermission) {
+            if problem != hint { problem = hint }
+        } else if problem == hint {
+            problem = nil
         }
     }
 
