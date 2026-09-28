@@ -269,7 +269,7 @@ final class MeetingSessionTests: XCTestCase {
         center.post(name: NSWorkspace.didWakeNotification, object: nil)
         wait { self.you.starts == 2 && self.session.problem != nil }
         XCTAssertEqual(you.starts, 2)
-        XCTAssertEqual(session.problem, L("Vom Ton des Macs kommt gerade nichts an."))
+        XCTAssertEqual(session.problem, L("Vom Mac-Ton kommt gerade nichts an."))
 
         you.play(TestAudio.speech(6) + TestAudio.silence(1))
         wait { self.session.entries.count == 1 }

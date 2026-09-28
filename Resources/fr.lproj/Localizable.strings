@@ -271,7 +271,7 @@
 "Kein Sprachmodell geladen – ein Teil des Meetings fehlt." = "Aucun modèle vocal chargé – une partie de la réunion manque.";
 "Die Umwandlung kommt nicht hinterher – der Text folgt etwas später." = "La transcription prend du retard – le texte suivra un peu plus tard.";
 "Das Mikrofon liefert gerade keinen Ton." = "Le micro ne fournit aucun son pour le moment.";
-"Vom Ton des Macs kommt gerade nichts an." = "Aucun son du Mac n’arrive pour le moment.";
+"Vom Mac-Ton kommt gerade nichts an." = "Aucun son du Mac n’arrive pour le moment.";
 "Eintrag löschen" = "Supprimer l’entrée";
 "Aufgabe" = "Tâche";
 "Bild öffnen" = "Ouvrir l’image";

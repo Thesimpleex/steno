@@ -559,7 +559,7 @@ final class MeetingSession: ObservableObject {
     }
 
     private static func failure(of speaker: Speaker) -> String {
-        speaker == .you ? L("Das Mikrofon liefert gerade keinen Ton.") : L("Vom Ton des Macs kommt gerade nichts an.")
+        speaker == .you ? L("Das Mikrofon liefert gerade keinen Ton.") : L("Vom Mac-Ton kommt gerade nichts an.")
     }
 
     /// Sekunden seit Beginn des Meetings.

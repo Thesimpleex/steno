@@ -98,7 +98,7 @@ struct MeetingsPage: View {
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 12)
                 Button(action: start) {
-                    // Beim ersten Mal wartet der Start auf die Frage nach der Freigabe; so sieht man, dass etwas passiert.
+                    // Der Start dauert beim ersten Mal ein paar Sekunden; so sieht man, dass etwas passiert.
                     if meeting.isStarting {
                         HStack(spacing: 8) {
                             ProgressView().controlSize(.small)
