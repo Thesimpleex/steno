@@ -6,6 +6,7 @@ struct SettingsPage: View {
     @ObservedObject private var history = HistoryStore.shared
     @State private var confirmClear = false
     @State private var confirmStopHistory = false
+    @State private var meetingFolder = MeetingFolder.displayPath
 
     private static let project = URL(string: "https://github.com/Thesimpleex/steno")!
     private static let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "–"
@@ -91,6 +92,18 @@ struct SettingsPage: View {
                     }
                 }
                 .card(padding: 0)
+            }
+
+            TitledGroup(title: L("Meetings")) {
+                Row(title: L("Speicherort"), detail: meetingFolder) {
+                    Button(L("Ändern …")) {
+                        if MeetingFolder.choose() { meetingFolder = MeetingFolder.displayPath }
+                    }
+                    .buttonStyle(.pill)
+                    Button(L("Im Finder zeigen"), action: MeetingFolder.reveal).buttonStyle(.pill)
+                }
+                .card(padding: 0)
+                Footnote(L("Jedes Meeting liegt in einem eigenen Ordner mit Protokoll und Bildern. Der Ton wird nie gespeichert."))
             }
 
             TitledGroup(title: L("Über Steno")) {
