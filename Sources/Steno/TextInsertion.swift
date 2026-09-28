@@ -160,11 +160,12 @@ enum TextInsertion {
     /// Was darüber liegt, kam von außen – etwa ein Screenshot. Nur auf dem Hauptthread benutzen.
     private(set) static var ownChangeCount = 0
 
-    static func paste(_ text: String) {
+    /// `send`: danach Return drücken, etwa um eine Chatnachricht abzuschicken.
+    static func paste(_ text: String, send: Bool = false) {
         // Kurz nach dem letzten Einfügen warten, bis die App den Text gelesen hat – sonst bekäme sie schon den neuen.
         let wait = nextPaste.timeIntervalSinceNow
         if wait > 0 {
-            DispatchQueue.main.asyncAfter(deadline: .now() + wait) { paste(text) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + wait) { paste(text, send: send) }
             return
         }
         let pasteboard = NSPasteboard.general
@@ -187,7 +188,11 @@ enum TextInsertion {
         ownChangeCount = change
         nextPaste = Date.now.addingTimeInterval(0.4)
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { pressCommandV() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+            pressCommandV()
+            // Erst abschicken, wenn die App den Text eingesetzt hat.
+            if send { DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { pressReturn() } }
+        }
 
         let restore = DispatchWorkItem {
             defer { savedClipboard = nil; pendingRestore = nil }
@@ -242,6 +247,17 @@ enum TextInsertion {
             guard let event = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: down) else { return }
             event.setIntegerValueField(.eventSourceUserData, value: HotKeyMonitor.ownEventMarker)
             if key == v || down { event.flags = .maskCommand }
+            event.post(tap: .cghidEventTap)
+        }
+    }
+
+    /// Wie ⌘V markiert, damit der eigene Tastatur-Abgriff es durchlässt. Nie in eine Passworteingabe.
+    static func pressReturn() {
+        guard !IsSecureEventInputEnabled() else { return }
+        let source = CGEventSource(stateID: .privateState)
+        for down in [true, false] {
+            guard let event = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_Return), keyDown: down) else { return }
+            event.setIntegerValueField(.eventSourceUserData, value: HotKeyMonitor.ownEventMarker)
             event.post(tap: .cghidEventTap)
         }
     }

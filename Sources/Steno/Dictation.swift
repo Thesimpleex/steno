@@ -5,6 +5,7 @@ import Carbon.HIToolbox
 ///
 /// - Taste (Standard ⌥) halten: Aufnahme läuft, bis sie losgelassen wird.
 /// - Zweimal tippen: freihändig, bis noch einmal getippt wird. Esc bricht immer ab.
+/// - Return während der Aufnahme: nach dem Einfügen abschicken.
 final class Dictation {
     private enum Mode { case idle, holding, handsFree }
 
@@ -13,7 +14,7 @@ final class Dictation {
             // Wurde während eines Modellwechsels diktiert, jetzt nachholen.
             if transcriber != nil, let queued = queuedAudio {
                 queuedAudio = nil
-                transcribe(queued)
+                transcribe(queued.samples, send: queued.send)
             }
         }
     }
@@ -46,14 +47,17 @@ final class Dictation {
     /// Hält den Bildschirm wach, solange aufgenommen wird – sonst würde die Sperre eine lange Aufnahme beenden.
     private var awake: NSObjectProtocol?
     /// Aufnahme, die fertig wurde, während gerade das Modell gewechselt wurde.
-    private var queuedAudio: [Float]?
+    private var queuedAudio: (samples: [Float], send: Bool)?
+    /// Während der Aufnahme kam Return: Der Text wird nach dem Einfügen abgeschickt.
+    private var sendAfterwards = false
     /// Bei längeren Aufnahmen läuft das Mikrofon nach dem Loslassen kurz weiter: Wer die Taste nur aus Versehen
     /// losgelassen hat und gleich wieder drückt, diktiert einfach weiter.
     private var releaseGrace: DispatchWorkItem?
     /// Die dabei schon vorgezogene Umwandlung – so kostet die Schonfrist keine Wartezeit.
     private var graceEarly: (id: Int, text: String?, cancellation: Cancellation)?
-    /// Vorgezogene Umwandlungen, deren Frist abgelaufen ist und deren Text noch kommt – er wird auf jeden Fall geliefert.
-    private var awaitingEarly = Set<Int>()
+    /// Vorgezogene Umwandlungen, deren Frist abgelaufen ist und deren Text noch kommt – er wird auf jeden Fall geliefert
+    /// (true: und danach abgeschickt).
+    private var awaitingEarly: [Int: Bool] = [:]
     private var earlyCount = 0
     /// Umwandlungen, deren Ergebnis noch aussteht – solange zeigt die Anzeige „arbeitet“ statt zu verschwinden.
     private var working = 0
@@ -109,7 +113,8 @@ final class Dictation {
         case .chord(let time): keyChord(at: time)
         case .escape: escape()
         case .pasteLast: pasteLast()
-        case .note, .send: break  // die Notiz gehört dem Meeting; „Senden“ folgt
+        case .send: send()
+        case .note: break  // die Notiz gehört dem Meeting
         }
     }
 
@@ -197,6 +202,13 @@ final class Dictation {
         if mode == .holding, time - pressedAt < Timing.shortcutWindow { cancelRecording() }
     }
 
+    /// Return: freihändig endet die Aufnahme damit wie mit einem Tippen, gehalten wie gewohnt beim Loslassen.
+    private func send() {
+        guard mode != .idle else { return }
+        sendAfterwards = true
+        if mode == .handsFree { finishRecording() } else { overlay.showSendHint() }
+    }
+
     private func escape() {
         guard mode != .idle else { return }
         dropGraceEarly()
@@ -235,6 +247,7 @@ final class Dictation {
         resumed = resumable
         startedAt = .now - (resumed?.duration ?? 0)
         mode = newMode
+        sendAfterwards = false
         // Erst die Anzeige, dann das Mikrofon: Wie lange das Gerät zum Starten braucht, schwankt.
         overlay.showRecording(handsFree: newMode == .handsFree, since: startedAt)
         microphone.startInBackground()
@@ -280,9 +293,9 @@ final class Dictation {
         graceEarly = (id, nil, cancellation)
         runTranscription(withResumed(microphone.snapshot()), cancellation: cancellation) { [weak self] text in
             guard let self else { return }
-            if self.awaitingEarly.remove(id) != nil {  // Frist schon vorbei: jetzt liefern
+            if let send = self.awaitingEarly.removeValue(forKey: id) {  // Frist schon vorbei: jetzt liefern
                 self.working = max(0, self.working - 1)
-                self.deliver(text)
+                self.deliver(text, send: send)
             } else if self.graceEarly?.id == id {  // Frist läuft noch: bereithalten
                 self.graceEarly?.text = text
             }  // sonst verworfen: weiterdiktiert oder abgebrochen
@@ -300,9 +313,9 @@ final class Dictation {
         resumeExpiry?.cancel()
         Sound.stop.play()
         if let text = early.text {
-            deliver(text)
+            deliver(text, send: sendAfterwards)
         } else {
-            awaitingEarly.insert(id)
+            awaitingEarly[id] = sendAfterwards
             working += 1
             overlay.showWorking()
         }
@@ -358,19 +371,19 @@ final class Dictation {
         guard duration >= Timing.tap, samples.count >= 4_000 else { return showPendingOrHide() }
         guard transcriber != nil else {
             // Das Modell wird gerade gewechselt – die Aufnahme wartet darauf.
-            queuedAudio = samples
+            queuedAudio = (samples, sendAfterwards)
             return overlay.showWorking()
         }
-        transcribe(samples)
+        transcribe(samples, send: sendAfterwards)
     }
 
-    private func transcribe(_ samples: [Float]) {
+    private func transcribe(_ samples: [Float], send: Bool) {
         overlay.showWorking()
         working += 1
         runTranscription(samples) { [weak self] text in
             guard let self else { return }
             self.working = max(0, self.working - 1)
-            self.deliver(text)
+            self.deliver(text, send: send)
         }
     }
 
@@ -391,13 +404,14 @@ final class Dictation {
     // MARK: Ergebnis
 
     /// Wohin der Text geht, klären die Bedienungshilfen im Hintergrund; entschieden wird erst mit ihrer Antwort.
-    private func deliver(_ result: String) {
+    /// `send`: nach dem Einfügen abschicken – nur, wenn wirklich eingefügt wurde.
+    private func deliver(_ result: String, send: Bool) {
         TextInsertion.inspect(probe: Settings.autoInsert) { [weak self] target in
-            self?.deliver(result, to: target)
+            self?.deliver(result, to: target, send: send)
         }
     }
 
-    private func deliver(_ result: String, to target: TextInsertion.Target) {
+    private func deliver(_ result: String, to target: TextInsertion.Target, send: Bool) {
         #if DEBUG
         Latency.mark("Ergebnis")
         #endif
@@ -417,7 +431,8 @@ final class Dictation {
         if !result.isEmpty { HistoryStore.shared.add(result) }
         if target.canType {  // nur gefragt, wenn eingefügt werden soll
             if !recordingAgain { working > 0 ? overlay.showWorking() : overlay.hide() }
-            insert(text, at: target)
+            // Abgeschickt wird nur, was gerade diktiert wurde – nicht ein zurückgehaltener Text allein.
+            insert(text, at: target, send: send && !result.isEmpty)
         } else if recordingAgain {
             // Nicht verlieren: in die Zwischenablage und nach der laufenden Aufnahme zeigen.
             TextInsertion.copy(text)
@@ -442,7 +457,7 @@ final class Dictation {
 
     /// Mit Leerzeichen davor, wenn direkt vor dem Cursor schon Text steht. Lässt sich das Zeichen
     /// nicht lesen (Terminal), zählt: gerade eben schon in dieselbe App diktiert.
-    private func insert(_ text: String, at target: TextInsertion.Target) {
+    private func insert(_ text: String, at target: TextInsertion.Target, send: Bool = false) {
         let app = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
         let needsSpace: Bool
         if let before = target.characterBefore {
@@ -452,7 +467,7 @@ final class Dictation {
         } else {
             needsSpace = false
         }
-        TextInsertion.paste(needsSpace ? " " + text : text)
+        TextInsertion.paste(needsSpace ? " " + text : text, send: send)
         lastInsertion = (.now, app)
     }
 

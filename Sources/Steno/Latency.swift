@@ -6,9 +6,10 @@ import os
 ///
 ///     log stream --style compact --predicate 'subsystem == "io.github.thesimpleex.steno" && category == "latency"'
 ///
-/// Dazu eine Prüfung, die die Mikrofon-Freigabe braucht und deshalb nur auf ausdrücklichen Aufruf läuft:
+/// Dazu zwei Prüfungen, die Freigaben brauchen und deshalb nur auf ausdrücklichen Aufruf laufen:
 ///
 ///     Steno --check-microphone   Mikrofon kalt und vorbereitet starten, Zeit bis zum ersten Puffer
+///     Steno --check-send         nach 3 s „Steno“ ins aktive Textfeld einfügen und mit Return abschicken
 enum Latency {
     private static let log = Logger(subsystem: "io.github.thesimpleex.steno", category: "latency")
     // Nur auf dem Hauptthread:
@@ -80,6 +81,7 @@ enum Latency {
 
     static func main(_ arguments: [String]) -> Int32? {
         if arguments.contains("--check-microphone") { return checkMicrophone() }
+        if arguments.contains("--check-send") { return checkSend() }
         return nil
     }
 
@@ -119,6 +121,14 @@ enum Latency {
                          prepared ? "vorbereitet" : "kalt", (heardAt - start) * 1000, seconds))
             RunLoop.main.run(until: .now + 0.5)
         }
+        return 0
+    }
+
+    private static func checkSend() -> Int32 {
+        print("In 3 s wird „Steno“ ins aktive Textfeld eingefügt und mit Return abgeschickt …")
+        RunLoop.main.run(until: .now + 3)
+        TextInsertion.paste("Steno", send: true)
+        RunLoop.main.run(until: .now + 2)
         return 0
     }
 }

@@ -56,7 +56,13 @@ final class NotchOverlay {
     func showRecording(handsFree: Bool, since start: Date = .now) {
         model.startedAt = start
         model.levels = Array(repeating: 0, count: model.levels.count)
+        model.willSend = false
         show(.recording(handsFree: handsFree))
+    }
+
+    /// Return während der Aufnahme: ein kleines ↩︎ zeigt, dass danach abgeschickt wird.
+    func showSendHint() {
+        withAnimation(.easeOut(duration: 0.15)) { model.willSend = true }
     }
 
     /// Legt das Fenster beim Start an und zeichnet es einmal unsichtbar – so muss das erste Einblenden nicht darauf warten.
@@ -264,6 +270,8 @@ final class OverlayModel: ObservableObject {
     @Published var meetingStart = Date.now
     @Published var meetingSources: MeetingSources = [.microphone, .systemAudio]
     @Published var meetingLevels = MeetingLevels()
+    /// Nach dem Einfügen wird abgeschickt.
+    @Published var willSend = false
 
     func push(level: Float) {
         levels.removeFirst()
@@ -464,6 +472,9 @@ struct OverlayView: View {
             HStack(spacing: 6) {
                 if handsFree {
                     Image(systemName: "lock.fill").font(.system(size: 9, weight: .bold)).foregroundStyle(.orange)
+                } else if model.willSend {
+                    // Anstelle des Punkts: Neben der Zeit ist kein Platz mehr, sobald sie zweistellige Minuten hat.
+                    Image(systemName: "return").font(.system(size: 9, weight: .bold)).foregroundStyle(PulsingDot.red)
                 } else {
                     PulsingDot()
                 }
@@ -534,11 +545,12 @@ struct OverlayView: View {
 
 private struct PulsingDot: View {
     var pulsing = true
+    static let red = Color(red: 1, green: 0.27, blue: 0.23)
     @State private var bright = false
 
     var body: some View {
         Circle()
-            .fill(Color(red: 1, green: 0.27, blue: 0.23))
+            .fill(Self.red)
             .frame(width: 7, height: 7)
             .opacity(bright || !pulsing ? 1 : 0.35)
             .onAppear {
