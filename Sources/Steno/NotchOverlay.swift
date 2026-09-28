@@ -85,11 +85,12 @@ final class NotchOverlay {
         model.meetingStart = start
         model.meetingSources = sources
         model.meetingLevels = MeetingLevels()
+        model.meetingRunning = true
         if model.state == .hidden { show(.meeting) }
     }
 
     func endMeeting() {
-        model.meetingStart = nil
+        model.meetingRunning = false
         if model.state == .meeting { hide() }
     }
 
@@ -231,8 +232,9 @@ final class OverlayModel: ObservableObject {
     @Published var copied = false
     @Published var startedAt = Date.now
     @Published var geometry = NotchGeometry(nil)
-    /// Beginn und Quellen des laufenden Meetings; nil, solange keins läuft.
-    @Published var meetingStart: Date?
+    @Published var meetingRunning = false
+    /// Start und Quellen bleiben stehen, bis das nächste Meeting beginnt – so springt die Zeit beim Ausblenden nicht.
+    @Published var meetingStart = Date.now
     @Published var meetingSources: MeetingSources = [.microphone, .systemAudio]
     @Published var meetingLevels = MeetingLevels()
 
@@ -242,7 +244,7 @@ final class OverlayModel: ObservableObject {
     }
 
     /// Wohin die Anzeige zurückkehrt, wenn nichts anderes zu zeigen ist.
-    var resting: State { meetingStart == nil ? .hidden : .meeting }
+    var resting: State { meetingRunning ? .meeting : .hidden }
 }
 
 struct NotchGeometry: Equatable {
@@ -445,7 +447,7 @@ struct OverlayView: View {
         case .meeting:
             HStack(spacing: 6) {
                 PulsingDot(pulsing: false)
-                Elapsed(since: model.meetingStart ?? .now)
+                Elapsed(since: model.meetingStart)
             }
         case .message:
             Image(systemName: "info.circle.fill").font(.system(size: 11))
