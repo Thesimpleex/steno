@@ -199,14 +199,17 @@ struct PillPicker<Value: Hashable>: View {
 struct InputField: View {
     let placeholder: String
     @Binding var text: String
+    /// Wer den Cursor selbst setzen will, gibt hier seinen eigenen Fokus mit.
+    var focus: FocusState<Bool>.Binding?
     var onSubmit: () -> Void = {}
-    @FocusState private var focused: Bool
+    @FocusState private var ownFocus: Bool
 
     var body: some View {
+        let focused = focus?.wrappedValue ?? ownFocus
         TextField(placeholder, text: $text, prompt: Text(placeholder))
             .textFieldStyle(.plain)
             .font(.system(size: 13))
-            .focused($focused)
+            .focused(focus ?? $ownFocus)
             .onSubmit(onSubmit)
             .padding(.horizontal, 10)
             .frame(height: 30)
@@ -333,6 +336,24 @@ struct StatusDot: View {
 
     var body: some View {
         Circle().fill(ok ? Color.green : .orange).frame(width: 7, height: 7)
+    }
+}
+
+/// Roter Punkt für „es wird aufgenommen“; pulsiert, außer bei „Bewegung reduzieren“.
+struct RecordingDot: View {
+    var size: CGFloat = 7
+    @State private var bright = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Circle()
+            .fill(Theme.accent)
+            .frame(width: size, height: size)
+            .opacity(bright ? 1 : 0.35)
+            .onAppear {
+                if reduceMotion { bright = true } else { withAnimation(.easeInOut(duration: 0.7).repeatForever()) { bright = true } }
+            }
+            .accessibilityHidden(true)
     }
 }
 
