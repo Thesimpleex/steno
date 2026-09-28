@@ -45,12 +45,6 @@ struct MeetingsPage: View {
     @State private var sources = Settings.meetingSources
     @State private var failure: String?
 
-    private static let stamp: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.setLocalizedDateFormatFromTemplate("ddMMHHmm")
-        return formatter
-    }()
-
     var body: some View {
         Group {
             switch meeting.state {
@@ -80,8 +74,8 @@ struct MeetingsPage: View {
 
     // MARK: Starten
 
-    /// Ohne eigenen Titel gilt der Zeitpunkt des Starts.
-    private var defaultTitle: String { L("Meeting %@", Self.stamp.string(from: .now)) }
+    /// Datum und Uhrzeit stehen ohnehin im Ordnernamen und in der Liste.
+    private var defaultTitle: String { L("Meeting") }
 
     private var startCard: some View {
         VStack(alignment: .leading, spacing: 16) {

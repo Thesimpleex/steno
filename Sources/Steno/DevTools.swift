@@ -205,7 +205,7 @@ enum DevTools {
         let running = MeetingSession(state: .running, info: meetingSamples.running, entries: meetingSamples.timeline)
         let finishing = MeetingSession(state: .finishing, info: meetingSamples.running, entries: meetingSamples.timeline)
         var freshInfo = meetingSamples.running
-        freshInfo.title = L("Meeting %@", "28.09., 14:30")
+        freshInfo.title = L("Meeting")
         freshInfo.startedAt = .now.addingTimeInterval(-12)
         freshInfo.participants = ""
         freshInfo.othersName = ""
