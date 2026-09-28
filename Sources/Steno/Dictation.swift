@@ -203,16 +203,14 @@ final class Dictation {
         dropGraceEarly()
         let duration = Date.now.timeIntervalSince(startedAt)
         let samples = collectSamples()
-        if let pendingResult {
-            self.pendingResult = nil
-            overlay.showResult(pendingResult, copied: true)
-            if duration >= 1 { resumable = (samples, duration) }
-            schedule(&resumeExpiry, after: Timing.resumeWindow + Timing.resumeSlack) { [weak self] in self?.resumable = nil }
-            return
-        }
         if duration >= 1 {
             resumable = (samples, duration)
             schedule(&resumeExpiry, after: Timing.resumeWindow + Timing.resumeSlack) { [weak self] in self?.resumable = nil }
+        }
+        if let pendingResult {
+            self.pendingResult = nil
+            overlay.showResult(pendingResult, copied: true)
+        } else if duration >= 1 {
             overlay.showMessage(L("Abgebrochen – innerhalb von 3 s %@ drücken, um fortzusetzen", hotKey.symbol), seconds: Timing.resumeWindow)
         } else {
             overlay.showMessage(L("Abgebrochen"), seconds: 1)
