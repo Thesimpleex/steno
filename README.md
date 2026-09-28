@@ -161,8 +161,8 @@ Requires Xcode 16+ (Swift 6 toolchain). SwiftPM fetches the official, checksum-p
 Useful while developing:
 
 ```bash
-build/Steno.app/Contents/MacOS/Steno --test recording.wav              # transcribe a file, no hotkey needed
-STENO_DATA=/tmp/steno-test build/Steno.app/Contents/MacOS/Steno --setup  # setup assistant with separate data
+build/app.noindex/Steno.app/Contents/MacOS/Steno --test recording.wav              # transcribe a file, no hotkey needed
+STENO_DATA=/tmp/steno-test build/app.noindex/Steno.app/Contents/MacOS/Steno --setup  # setup assistant with separate data
 ```
 
 `STENO_DATA` separates history, dictionary and models; settings (UserDefaults) are shared with your normal install.

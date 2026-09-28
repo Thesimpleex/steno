@@ -6,7 +6,8 @@ cd "$(dirname "$0")"
 
 swift build -c release --arch arm64
 BIN="$(swift build -c release --arch arm64 --show-bin-path)"
-APP=build/Steno.app
+# Im Ordner mit „.noindex“ findet Spotlight die Bau-Kopie nicht – sonst stünde Steno zweimal in der Suche.
+APP=build/app.noindex/Steno.app
 # Der Ordnername unter artifacts hängt vom Namen des Checkouts ab – deshalb suchen, neuester zuerst.
 frameworks=(.build/artifacts/*/whisper/whisper.xcframework/macos-arm64_x86_64/whisper.framework(N/om))
 FRAMEWORK="${frameworks[1]:-}"

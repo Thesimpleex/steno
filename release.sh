@@ -7,7 +7,7 @@ cd "$(dirname "$0")"
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' Resources/Info.plist)"
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
-ditto build/Steno.app "$STAGE/Steno.app"
+ditto build/app.noindex/Steno.app "$STAGE/Steno.app"
 ln -s /Applications "$STAGE/Applications"
 rm -f build/Steno.dmg
 hdiutil create -volname "Steno $VERSION" -srcfolder "$STAGE" -ov -format UDZO build/Steno.dmg >/dev/null 2>&1
