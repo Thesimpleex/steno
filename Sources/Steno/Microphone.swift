@@ -90,10 +90,6 @@ final class Microphone {
     /// `id`: die Aufnahme, für die gestartet wird. Ist sie inzwischen schon wieder beendet, bleibt das Gerät
     /// nur vorbereitet – so geht bei ⌥L & Co. kein Mikrofon an. Nur auf `queue`.
     private func launch(_ prepared: Prepared, for id: Int?) throws {
-        #if DEBUG
-        let began = ProcessInfo.processInfo.systemUptime
-        defer { Latency.duration("Mikrofon starten", since: began) }
-        #endif
         guard lock.withLock({ capture.begin(id, engine: prepared.number) }) else { return keep(prepared) }
         try prepared.engine.start()
         engine = prepared.engine
@@ -101,10 +97,6 @@ final class Microphone {
 
     /// Alles außer dem Start: Gerät wählen, Format, Umwandlung, Abgriff. Nur auf `queue`.
     private func build() throws -> Prepared {
-        #if DEBUG
-        let began = ProcessInfo.processInfo.systemUptime
-        defer { Latency.duration("Mikrofon öffnen", since: began) }
-        #endif
         let engine = AVAudioEngine()
         let input = engine.inputNode
         let defaultInput = Self.defaultInput

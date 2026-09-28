@@ -84,16 +84,8 @@ final class Dictation {
             DispatchQueue.main.async { overlay.model.push(level: level) }
         }
         // Der Startton erst, wenn das Mikrofon wirklich zuhört.
-        microphone.onListening = {
-            #if DEBUG
-            Latency.step("Mikrofon hört")
-            #endif
-            Sound.start.play()
-        }
+        microphone.onListening = { Sound.start.play() }
         microphone.onFailure = { [weak self] in self?.microphoneFailed($0) }
-        #if DEBUG
-        Latency.watchMainThread()
-        #endif
     }
 
     /// Beim Start einmal anlegen, was das erste Diktat sonst aufhalten würde.
@@ -104,9 +96,6 @@ final class Dictation {
     }
 
     func handle(_ event: HotKeyMonitor.Event) {
-        #if DEBUG
-        Latency.received(event)
-        #endif
         switch event {
         case .down(let time): keyDown(at: time)
         case .up(let time): keyUp(at: time)
@@ -251,9 +240,6 @@ final class Dictation {
         // Erst die Anzeige, dann das Mikrofon: Wie lange das Gerät zum Starten braucht, schwankt.
         overlay.showRecording(handsFree: newMode == .handsFree, since: startedAt)
         microphone.startInBackground()
-        #if DEBUG
-        Latency.overlayShown()
-        #endif
         schedule(&pendingMediaPause, after: Timing.mediaPauseDelay) { [weak self] in self?.media.pause() }
         schedule(&recordingLimit, after: Timing.maximum) { [weak self] in self?.finishRecording() }
         awake = ProcessInfo.processInfo.beginActivity(options: [.userInitiated, .idleDisplaySleepDisabled],
@@ -412,9 +398,6 @@ final class Dictation {
     }
 
     private func deliver(_ result: String, to target: TextInsertion.Target, send: Bool) {
-        #if DEBUG
-        Latency.mark("Ergebnis")
-        #endif
         let recordingAgain = mode != .idle  // schon das nächste Diktat angefangen: Anzeige nicht anfassen
         // Ein zurückgehaltenes Ergebnis aus der Zeit davor gehört mit dazu.
         var text = result
