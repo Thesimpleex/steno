@@ -94,8 +94,8 @@ You need a Mac with Apple silicon (M1 or later), macOS 14 Sonoma or later and at
 > whether the character before the cursor needs a space) and to paste the text. Key presses are never recorded or
 > stored.
 >
-> **Updating:** builds are ad-hoc signed, so macOS may ask for the Accessibility permission again after an update.
-> Steno's window then shows an **Allow** button that fixes it in two clicks.
+> **Updating:** every release is signed with the same certificate, so macOS keeps Steno's permissions when you
+> install a new version.
 
 ## Privacy
 
