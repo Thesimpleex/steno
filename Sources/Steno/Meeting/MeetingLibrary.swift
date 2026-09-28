@@ -16,11 +16,6 @@ final class MeetingLibrary: ObservableObject {
     /// Protokolltexte für die Suche: gelesen wird erst beim Suchen, und nur neu, wenn sich die Datei geändert hat.
     private var texts: [URL: (modified: Date, text: String)] = [:]
 
-    /// Für Vorschaubilder und Tests: eine Liste, die ohne Ablage auskommt.
-    init(items: [Item] = []) {
-        self.items = items
-    }
-
     /// Liest die Ablage neu ein. Ordner ohne lesbare meeting.json gehören nicht dazu.
     func reload() {
         let root = MeetingStore.root

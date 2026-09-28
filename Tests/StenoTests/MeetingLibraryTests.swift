@@ -178,15 +178,4 @@ final class MeetingLibraryTests: XCTestCase {
         XCTAssertEqual(titles(library.items), ["Eins"])
         XCTAssertTrue(files.fileExists(atPath: folder.path))
     }
-
-    func testPreviewListNeedsNoFolder() {
-        let info = MeetingInfo(title: "Vorschau", startedAt: .now, sources: [])
-        let item = MeetingLibrary.Item(folder: base.appendingPathComponent("nirgends", isDirectory: true), info: info)
-        let preview = MeetingLibrary(items: [item])
-        XCTAssertEqual(preview.items, [item])
-        XCTAssertEqual(preview.items(matching: "vorschau"), [item])
-        preview.trashFolder = { _ in }
-        preview.trash(item)
-        XCTAssertEqual(preview.items, [])
-    }
 }

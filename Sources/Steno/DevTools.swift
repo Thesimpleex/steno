@@ -60,10 +60,9 @@ enum DevTools {
         try? JSONSerialization.data(withJSONObject: history).write(to: folder.appendingPathComponent("verlauf.json"))
         try? JSONSerialization.data(withJSONObject: dictionary).write(to: folder.appendingPathComponent("woerterbuch.json"))
 
-        // Meetings nie in „Dokumente“ ablegen, auch nicht zum Zeichnen.
-        let meetings = folder.appendingPathComponent("Steno Meetings", isDirectory: true)
-        MeetingStore.rootOverride = meetings
-        meetingSamples = makeMeetingSamples(in: meetings, german: german)
+        // Meetings nie in „Dokumente“ ablegen, auch nicht zum Zeichnen. Die Beispiele legt erst `snapshots` hinein.
+        MeetingStore.rootOverride = folder.appendingPathComponent("Steno Meetings", isDirectory: true)
+        meetingSamples = makeMeetingSamples(german: german)
 
         NSApplication.shared.setActivationPolicy(.accessory)
         NSApplication.shared.applicationIconImage = NSImage(contentsOf: root.appendingPathComponent("Resources/AppIcon.icns"))
@@ -71,19 +70,17 @@ enum DevTools {
 
     // MARK: Meetings
 
-    /// Vier Meetings in der Ablage – das erste mit Zeitleiste und Bild – und dieselbe Zeitleiste für ein laufendes.
+    /// Vier Meetings für die Ablage – das erste mit Zeitleiste und Bild – und dieselbe Zeitleiste für ein laufendes.
     private struct MeetingSamples {
-        var library = MeetingLibrary()
+        var files: [MeetingFile] = []
         var timeline: [MeetingEntry] = []
         var running = MeetingInfo(title: "", startedAt: .now, sources: [])
     }
 
     private static var meetingSamples = MeetingSamples()
-    /// Mit der Liste aus den Beispieldaten; `--marketing` zeigt weiter eine leere.
-    private static var library = MeetingLibrary()
 
-    private static func makeMeetingSamples(in root: URL, german: Bool) -> MeetingSamples {
-        let image = "Bild 1.png"
+    private static func makeMeetingSamples(german: Bool) -> MeetingSamples {
+        let image = "3-46.png"
         let entries: [(TimeInterval, MeetingEntry.Kind)] = german ? [
             (8, .speech(.you, "Guten Morgen zusammen. Wir haben knapp eine Dreiviertelstunde, ich würde mit dem Stand zum Relaunch anfangen.")),
             (24, .speech(.others, "Guten Morgen. Ja, gerne. Das Design ist seit gestern freigegeben, die Umsetzung startet diese Woche.")),
@@ -137,18 +134,24 @@ enum DevTools {
                                           startedAt: .now.addingTimeInterval(-9 * 24 * hour), duration: 23 * 60,
                                           participants: german ? "Herr Schulz" : "Mr. Schulz", sources: .systemAudio), entries: []),
         ]
+        return MeetingSamples(files: files, timeline: timeline, running: running)
+    }
+
+    /// Legt die Beispiele in die Ablage, zum ersten auch das Bild aus seiner Zeitleiste, und liefert das erste.
+    private static func fileMeetingSamples() -> MeetingLibrary.Item? {
         var items: [MeetingLibrary.Item] = []
-        for (index, file) in files.enumerated() {
-            let folder = root.appendingPathComponent("\(index + 1) \(file.info.title)", isDirectory: true)
+        for (index, file) in meetingSamples.files.enumerated() {
+            let folder = MeetingStore.root.appendingPathComponent("\(index + 1) \(file.info.title)", isDirectory: true)
             try? FileManager.default.createDirectory(at: folder.appendingPathComponent(MeetingFile.imageFolder, isDirectory: true),
                                                      withIntermediateDirectories: true)
             try? MeetingStore.write(file, to: folder)
             items.append(MeetingLibrary.Item(folder: folder, info: file.info))
         }
-        if let first = items.first {
-            try? sampleImage()?.write(to: first.folder.appendingPathComponent(MeetingFile.imageFolder).appendingPathComponent(image))
+        guard let first = items.first else { return nil }
+        for case .image(let name) in meetingSamples.timeline.map(\.kind) {
+            try? sampleImage()?.write(to: first.folder.appendingPathComponent(MeetingFile.imageFolder).appendingPathComponent(name))
         }
-        return MeetingSamples(library: MeetingLibrary(items: items), timeline: timeline, running: running)
+        return first
     }
 
     /// Ein erfundenes Bildschirmfoto: ein Fenster mit Säulendiagramm.
@@ -195,7 +198,10 @@ enum DevTools {
     private static func snapshots(into folder: String) {
         try? FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)
         let (setup, ready, models) = states()
-        library = meetingSamples.library
+        for dark in [false, true] {  // solange die Ablage noch leer ist
+            save(main(.meetings, ready, models, dark: dark), to: "\(folder)/main-meetings-empty-\(dark ? "dark" : "light").png")
+        }
+        let finished = fileMeetingSamples()
         let running = MeetingSession(state: .running, info: meetingSamples.running, entries: meetingSamples.timeline)
         let finishing = MeetingSession(state: .finishing, info: meetingSamples.running, entries: meetingSamples.timeline)
         var freshInfo = meetingSamples.running
@@ -217,14 +223,12 @@ enum DevTools {
             save(main(.start, setup, models, dark: dark, scrolledBy: 180), to: "\(folder)/main-setup-scrolled-\(suffix).png")
             save(main(.start, ready, models, dark: dark, width: 860, height: 540), to: "\(folder)/main-start-small-\(suffix).png")
             save(main(.start, ready, models, dark: dark, meeting: running), to: "\(folder)/main-start-running-\(suffix).png")
-            save(main(.meetings, ready, models, dark: dark, library: MeetingLibrary()), to: "\(folder)/main-meetings-empty-\(suffix).png")
             save(main(.meetings, ready, models, dark: dark, meeting: running), to: "\(folder)/main-meetings-running-\(suffix).png")
             save(main(.meetings, ready, models, dark: dark, meeting: started), to: "\(folder)/main-meetings-started-\(suffix).png")
             save(main(.meetings, ready, models, dark: dark, width: 860, height: 540, meeting: running),
                  to: "\(folder)/main-meetings-running-small-\(suffix).png")
             save(main(.meetings, ready, models, dark: dark, meeting: finishing), to: "\(folder)/main-meetings-finishing-\(suffix).png")
-            save(main(.meetings, ready, models, dark: dark, height: 1100, opened: library.items.first),
-                 to: "\(folder)/main-meetings-detail-\(suffix).png")
+            save(main(.meetings, ready, models, dark: dark, height: 1100, opened: finished), to: "\(folder)/main-meetings-detail-\(suffix).png")
             for step in Step.allCases {
                 save(onboarding(step, setup, models, dark: dark), to: "\(folder)/onboarding-\(step.rawValue)-\(suffix).png")
             }
@@ -275,12 +279,12 @@ enum DevTools {
     private static func main(_ page: Page, _ state: AppState, _ models: ModelStore, dark: Bool,
                              width: CGFloat = 880, height: CGFloat = 620, colorfulButtons: Bool = false,
                              scrolledBy offset: CGFloat = 0, meeting: MeetingSession = MeetingSession(),
-                             library: MeetingLibrary? = nil, opened: MeetingLibrary.Item? = nil) -> NSBitmapImageRep? {
+                             opened: MeetingLibrary.Item? = nil) -> NSBitmapImageRep? {
         let navigation = Navigation()
         navigation.page = page
         navigation.meeting = opened
         let window = MainWindow.makeWindow(RootView(navigation: navigation, state: state, models: models,
-                                                    meeting: meeting, library: library ?? Self.library))
+                                                    meeting: meeting, library: MeetingLibrary()))
         window.setContentSize(NSSize(width: width, height: height))
         return render(window, dark: dark, colorfulButtons: colorfulButtons) {
             // Ein geöffnetes Fenster hat beim Meeting den Cursor im Notizfeld; ohne Tastaturfokus würde sonst das erste Feld markiert.
