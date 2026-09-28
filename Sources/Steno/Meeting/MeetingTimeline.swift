@@ -1,13 +1,6 @@
 import AppKit
 import SwiftUI
 
-/// „12:40“, ab einer Stunde „1:02:15“.
-func clockText(_ seconds: TimeInterval) -> String {
-    let total = max(0, Int(seconds))
-    if total >= 3600 { return String(format: "%d:%02d:%02d", total / 3600, total / 60 % 60, total % 60) }
-    return String(format: "%d:%02d", total / 60, total % 60)
-}
-
 extension View {
     /// Kapsel für den Sprecher: „Du“ in Tinte, die anderen zart hinterlegt.
     func speakerChip(_ speaker: Speaker) -> some View {
@@ -109,7 +102,7 @@ private struct EntryRow: View {
                 }
             }
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(L("Markierung") + ", " + clockText(entry.offset))
+            .accessibilityLabel(L("Markierung") + ", " + MeetingMarkdown.timestamp(entry.offset))
         case .image(let name):
             line(alignment: .top) {
                 glyph("photo", L("Bild")).padding(.top, 2)
@@ -120,7 +113,7 @@ private struct EntryRow: View {
     }
 
     private var time: some View {
-        Text(clockText(entry.offset))
+        Text(MeetingMarkdown.timestamp(entry.offset))
             .font(.system(size: 12, weight: .medium).monospacedDigit())
             .foregroundStyle(.secondary)
             .frame(width: timeWidth, alignment: .leading)

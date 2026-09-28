@@ -1,14 +1,13 @@
+import SwiftUI
 import XCTest
 @testable import Steno
 
 final class MeetingTimelineTests: XCTestCase {
-    func testClockText() {
-        XCTAssertEqual(clockText(0), "0:00")
-        XCTAssertEqual(clockText(59.9), "0:59")
-        XCTAssertEqual(clockText(754), "12:34")
-        XCTAssertEqual(clockText(3599), "59:59")
-        XCTAssertEqual(clockText(3735), "1:02:15")
-        XCTAssertEqual(clockText(-5), "0:00")
+    /// Eine von Hand bearbeitete meeting.json kann unsinnige Zeiten enthalten; die Zeitleiste zeigt sie trotzdem an.
+    func testDamagedOffsetsDoNotCrash() {
+        let entries = [MeetingEntry(offset: -3, kind: .note("Davor")), MeetingEntry(offset: 1e300, kind: .mark)]
+        let timeline = NSHostingView(rootView: MeetingTimeline(entries: entries, othersLabel: "Andere", folder: nil))
+        XCTAssertGreaterThan(timeline.fittingSize.height, 0)
     }
 
     func testFollowsNewContentWhileAtTheEnd() {

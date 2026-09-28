@@ -6,7 +6,7 @@ struct MeetingClock: View {
 
     var body: some View {
         TimelineView(.periodic(from: since, by: 1)) { context in
-            Text(clockText(context.date.timeIntervalSince(since))).font(.system(size: 13, weight: .medium).monospacedDigit())
+            Text(MeetingMarkdown.timestamp(context.date.timeIntervalSince(since))).font(.system(size: 13, weight: .medium).monospacedDigit())
         }
     }
 }
