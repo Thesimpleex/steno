@@ -30,6 +30,8 @@ echo "Signiere mit: $IDENTITY"
 codesign --force --sign "$IDENTITY" "$APP/Contents/Frameworks/whisper.framework"
 codesign --force --sign "$IDENTITY" "$APP"
 codesign --verify --strict "$APP"
+# Die Build-Kopie bei macOS abmelden, sonst startet „open Steno“ oder die Anmeldung womöglich sie statt der installierten App.
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -u "$APP" 2>/dev/null || true
 
 if [[ "${1:-}" == "--install" ]]; then
   pkill -x Steno 2>/dev/null || true

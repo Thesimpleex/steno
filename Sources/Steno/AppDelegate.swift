@@ -108,6 +108,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         state.requestAccessibility = { [weak self] in self?.requestAccessibility() }
         state.requestMicrophone = { [weak self] in self?.requestMicrophone() }
         state.setAutostart = { [weak self] in self?.setAutostart($0) }
+        repointAutostart()
         state.autostart = SMAppService.mainApp.status == .enabled
         refreshPermissions()
 
@@ -298,6 +299,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             dictation.overlay.showMessage(L("Beim Anmelden öffnen ließ sich nicht einschalten: %@", error.localizedDescription), seconds: 4)
         }
         state.autostart = SMAppService.mainApp.status == .enabled
+        if state.autostart { UserDefaults.standard.set(Bundle.main.bundlePath, forKey: Self.autostartPathKey) }
+    }
+
+    private static let autostartPathKey = "autostartBundlePath"
+
+    /// Der Anmeldeeintrag merkt sich die Kopie, von der aus er eingeschaltet wurde – auch eine aus dem
+    /// Build-Ordner. SMAppService verrät diesen Pfad nicht, deshalb merken wir ihn selbst und tragen
+    /// neu ein, sobald die installierte Kopie läuft. Nur aus einem Programme-Ordner, damit nie wieder
+    /// eine Build-Kopie beim Anmelden startet. Einmal pro Pfad, weil macOS bei jedem Eintragen eine Mitteilung zeigt.
+    private func repointAutostart() {
+        let path = Bundle.main.bundlePath
+        let folders = ["/Applications/", NSHomeDirectory() + "/Applications/"]
+        guard SMAppService.mainApp.status == .enabled,
+              folders.contains(where: { path.hasPrefix($0) }),
+              UserDefaults.standard.string(forKey: Self.autostartPathKey) != path else { return }
+        // Schlägt es fehl, zeigt das Menü danach den echten Stand.
+        try? SMAppService.mainApp.unregister()
+        if (try? SMAppService.mainApp.register()) != nil {
+            UserDefaults.standard.set(path, forKey: Self.autostartPathKey)
+        }
     }
 
     // MARK: Meeting
