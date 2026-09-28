@@ -51,6 +51,8 @@ final class Dictation {
     /// Während der Aufnahme kam Return: Der Text wird nach dem Einfügen abgeschickt – aber nur in der App, die beim
     /// Druck auf Return die Tastatur hatte.
     private var sendAfterwards: TextInsertion.Receiver?
+    /// Return kam erst, als die Aufnahme schon vorbei war, ihr Text aber noch umgewandelt wird: Es gilt für diesen Text.
+    private var lateSend: TextInsertion.Receiver?
     /// Bei längeren Aufnahmen läuft das Mikrofon nach dem Loslassen kurz weiter: Wer die Taste nur aus Versehen
     /// losgelassen hat und gleich wieder drückt, diktiert einfach weiter.
     private var releaseGrace: DispatchWorkItem?
@@ -190,8 +192,12 @@ final class Dictation {
 
     /// Return: freihändig endet die Aufnahme damit wie mit einem Tippen, gehalten wie gewohnt beim Loslassen.
     private func send() {
-        // Die Aufnahme ist schon vorbei (Loslassen kam zuerst an): Das verschluckte Return gehört der App.
-        guard mode != .idle else { return TextInsertion.pressReturn(in: TextInsertion.keyboardReceiver) }
+        // Die Aufnahme ist schon vorbei (Loslassen kam zuerst an): Wird ihr Text noch umgewandelt, wird er danach
+        // abgeschickt – sonst gehört das verschluckte Return der App.
+        guard mode != .idle else {
+            if working > 0 { lateSend = TextInsertion.keyboardReceiver } else { TextInsertion.pressReturn(in: TextInsertion.keyboardReceiver) }
+            return
+        }
         sendAfterwards = TextInsertion.keyboardReceiver
         if mode == .handsFree { finishRecording() } else { overlay.showSendHint() }
     }
@@ -393,6 +399,8 @@ final class Dictation {
     /// `send`: nach dem Einfügen abschicken – nur, wenn wirklich eingefügt wurde, und nur in der App, in der Return
     /// gedrückt wurde. Wer inzwischen gewechselt hat (Slack → Terminal), bekommt den Text ohne Return.
     private func deliver(_ result: String, send: TextInsertion.Receiver?) {
+        let send = send ?? lateSend
+        lateSend = nil
         TextInsertion.inspect(probe: Settings.autoInsert) { [weak self] target in
             self?.deliver(result, to: target, send: send)
         }
