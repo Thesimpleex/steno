@@ -27,6 +27,7 @@ if let index = CommandLine.arguments.firstIndex(of: "--test") {
 
 #if DEBUG
 if let status = DevTools.main(CommandLine.arguments) { exit(status) }
+if let status = Latency.main(CommandLine.arguments) { exit(status) }
 #endif
 
 let delegate = AppDelegate()

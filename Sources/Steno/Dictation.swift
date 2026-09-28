@@ -76,6 +76,14 @@ final class Dictation {
         microphone.onLevel = { [overlay] level in
             DispatchQueue.main.async { overlay.model.push(level: level) }
         }
+        // Der Startton erst, wenn das Mikrofon wirklich zuhört.
+        microphone.onListening = {
+            #if DEBUG
+            Latency.step("Mikrofon hört")
+            #endif
+            Sound.start.play()
+        }
+        microphone.onFailure = { [weak self] in self?.microphoneFailed($0) }
         #if DEBUG
         Latency.watchMainThread()
         #endif
@@ -128,6 +136,8 @@ final class Dictation {
         }
         pressedAt = time
         guard mode == .idle else { return }
+        // Das Mikrofon öffnet schon, während noch offen ist, ob ein Diktat oder ein Kürzel wie ⌥L kommt.
+        microphone.prepare()
         schedule(&pendingStart, after: Timing.holdDelay) { [weak self] in self?.startRecording(.holding) }
     }
 
@@ -210,21 +220,16 @@ final class Dictation {
             return
         }
         guard transcriber != nil else { return overlay.showMessage(notReadyReason, seconds: 3) }
-        guard Microphone.authorized else { return overlay.showMessage(L("Kein Mikrofonzugriff – Steno-Fenster öffnen"), seconds: 3) }
-        do {
-            try microphone.start()
-        } catch {
-            return overlay.showMessage(L("Mikrofon lässt sich nicht starten"))
-        }
         // `resumable` bleibt stehen, bis es abläuft: ein erstes Tippen beim Doppeltipp soll es nicht verbrauchen.
         resumed = resumable
         startedAt = .now - (resumed?.duration ?? 0)
         mode = newMode
+        // Erst die Anzeige, dann das Mikrofon: Wie lange das Gerät zum Starten braucht, schwankt.
         overlay.showRecording(handsFree: newMode == .handsFree, since: startedAt)
+        microphone.startInBackground()
         #if DEBUG
         Latency.overlayShown()
         #endif
-        Sound.start.play()
         schedule(&pendingMediaPause, after: Timing.mediaPauseDelay) { [weak self] in self?.media.pause() }
         schedule(&recordingLimit, after: Timing.maximum) { [weak self] in self?.finishRecording() }
         awake = ProcessInfo.processInfo.beginActivity(options: [.userInitiated, .idleDisplaySleepDisabled],
@@ -306,6 +311,17 @@ final class Dictation {
         resumed = nil
         guard !keepOverlay else { return }
         showPendingOrHide()
+    }
+
+    /// Das Mikrofon ist im Hintergrund nicht angesprungen – oder Steno darf es nicht benutzen.
+    private func microphoneFailed(_ error: Error) {
+        guard mode != .idle else { return }
+        cancelRecording(keepOverlay: true)
+        if case Microphone.Failure.notAllowed = error {
+            overlay.showMessage(L("Kein Mikrofonzugriff – Steno-Fenster öffnen"), seconds: 3)
+        } else {
+            overlay.showMessage(L("Mikrofon lässt sich nicht starten"))
+        }
     }
 
     /// Ein zurückgehaltenes Ergebnis zeigen statt es liegen zu lassen; läuft noch eine Umwandlung, „arbeitet“ zeigen.

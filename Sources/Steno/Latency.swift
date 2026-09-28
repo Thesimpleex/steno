@@ -1,10 +1,14 @@
 #if DEBUG
-import Foundation
+import AVFoundation
 import os
 
 /// Nur in Debug-Builds: wie schnell ein Diktat startet und ob der Hauptthread hängt. Mitlesen:
 ///
 ///     log stream --style compact --predicate 'subsystem == "io.github.thesimpleex.steno" && category == "latency"'
+///
+/// Dazu eine Prüfung, die die Mikrofon-Freigabe braucht und deshalb nur auf ausdrücklichen Aufruf läuft:
+///
+///     Steno --check-microphone   Mikrofon kalt und vorbereitet starten, Zeit bis zum ersten Puffer
 enum Latency {
     private static let log = Logger(subsystem: "io.github.thesimpleex.steno", category: "latency")
     // Nur auf dem Hauptthread:
@@ -70,6 +74,52 @@ enum Latency {
 
     private static func milliseconds(since start: TimeInterval) -> Int {
         Int((ProcessInfo.processInfo.systemUptime - start) * 1000)
+    }
+
+    // MARK: Prüfungen
+
+    static func main(_ arguments: [String]) -> Int32? {
+        if arguments.contains("--check-microphone") { return checkMicrophone() }
+        return nil
+    }
+
+    private static func checkMicrophone() -> Int32 {
+        if AVCaptureDevice.authorizationStatus(for: .audio) == .notDetermined {
+            var answered = false
+            AVCaptureDevice.requestAccess(for: .audio) { _ in DispatchQueue.main.async { answered = true } }
+            while !answered { RunLoop.main.run(until: .now + 0.05) }
+        }
+        guard Microphone.authorized else {
+            print("Kein Mikrofonzugriff – in den Systemeinstellungen für das Terminal erlauben.")
+            return 1
+        }
+        let microphone = Microphone()
+        var heardAt: TimeInterval?
+        var failed = false
+        microphone.onListening = { heardAt = ProcessInfo.processInfo.systemUptime }
+        microphone.onFailure = { _ in failed = true }
+        for prepared in [false, true, false, true] {
+            if prepared {
+                microphone.prepare()
+                RunLoop.main.run(until: .now + 0.5)
+            }
+            heardAt = nil
+            let start = ProcessInfo.processInfo.systemUptime
+            microphone.startInBackground()
+            while heardAt == nil, !failed, ProcessInfo.processInfo.systemUptime - start < 3 {
+                RunLoop.main.run(until: .now + 0.005)
+            }
+            RunLoop.main.run(until: .now + 1)
+            let seconds = Double(microphone.stop().count) / Microphone.format.sampleRate
+            guard let heardAt, !failed else {
+                print("Mikrofon lässt sich nicht starten")
+                return 1
+            }
+            print(String(format: "%@: erster Puffer nach %.0f ms, %.1f s aufgenommen",
+                         prepared ? "vorbereitet" : "kalt", (heardAt - start) * 1000, seconds))
+            RunLoop.main.run(until: .now + 0.5)
+        }
+        return 0
     }
 }
 #endif
