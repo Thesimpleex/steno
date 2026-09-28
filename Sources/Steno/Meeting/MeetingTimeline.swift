@@ -66,7 +66,7 @@ private struct EntryRow: View {
     private var readOnly: Bool { remove == nil }
 
     @ViewBuilder var body: some View {
-        let row = content.padding(.vertical, isMark ? 12 : 7)
+        let row = content.padding(.vertical, isMark ? 12 : 7).contentShape(Rectangle())
         // Nur mit Löschen ein Menü: Beim Lesen soll das Menü der Textauswahl (Kopieren) nicht von einem leeren verdeckt werden.
         if let remove {
             row.contextMenu { Button(L("Eintrag löschen"), role: .destructive) { remove(entry) } }
