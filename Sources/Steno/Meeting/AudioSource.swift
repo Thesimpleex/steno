@@ -10,12 +10,6 @@ protocol AudioSource: AnyObject {
     var lacksPermission: Bool { get }
     func start() throws
     func stopCapture()
-    /// Die Quelle läuft, aber macOS lässt sie (noch) nichts hören – etwa solange die Frage nach der Freigabe offen ist.
-    var lacksPermission: Bool { get }
-}
-
-extension AudioSource {
-    var lacksPermission: Bool { false }
 }
 
 extension AudioSource {
