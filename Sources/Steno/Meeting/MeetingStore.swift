@@ -41,11 +41,21 @@ enum MeetingStore {
     }
 
     /// Nil bei jedem Fehler: Eine beschädigte oder von Hand bearbeitete Datei darf die App nie zum Absturz bringen.
-    static func read(_ folder: URL) -> MeetingFile? {
+    static func read(_ folder: URL) -> MeetingFile? { decode(MeetingFile.self, in: folder) }
+
+    /// Nur die Angaben zum Meeting: Mehr braucht die Liste nicht, und lange Mitschriften würden sie aufhalten.
+    static func readInfo(_ folder: URL) -> MeetingInfo? { decode(Head.self, in: folder)?.info }
+
+    /// meeting.json ohne die Einträge.
+    private struct Head: Decodable {
+        var info: MeetingInfo
+    }
+
+    private static func decode<T: Decodable>(_ type: T.Type, in folder: URL) -> T? {
         guard let data = try? Data(contentsOf: folder.appendingPathComponent(MeetingFile.fileName)) else { return nil }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        return try? decoder.decode(MeetingFile.self, from: data)
+        return try? decoder.decode(type, from: data)
     }
 
     /// Speichert das Bild als PNG im Bilderordner und liefert den Dateinamen.

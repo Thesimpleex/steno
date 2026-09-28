@@ -28,7 +28,7 @@ final class MeetingLibrary: ObservableObject {
         items = names
             .compactMap { name -> Item? in
                 let folder = root.appendingPathComponent(name, isDirectory: true)
-                return MeetingStore.read(folder).map { Item(folder: folder, info: $0.info) }
+                return MeetingStore.readInfo(folder).map { Item(folder: folder, info: $0) }
             }
             .sorted { $0.info.startedAt > $1.info.startedAt }
     }

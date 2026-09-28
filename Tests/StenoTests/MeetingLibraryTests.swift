@@ -74,6 +74,17 @@ final class MeetingLibraryTests: XCTestCase {
         XCTAssertEqual(titles(library.items), ["Echt"], "nur direkte Unterordner mit lesbarer meeting.json")
     }
 
+    /// Die Liste liest nur die Angaben zum Meeting, nicht die ganze Mitschrift.
+    func testListDoesNotNeedTheEntries() throws {
+        let folder = try makeMeeting("Eins", .note("Rückruf"))
+        let json = folder.appendingPathComponent(MeetingFile.fileName)
+        let unknownKind = try String(contentsOf: json, encoding: .utf8).replacingOccurrences(of: "\"note\"", with: "\"neu\"")
+        try Data(unknownKind.utf8).write(to: json)
+        library.reload()
+        XCTAssertEqual(titles(library.items), ["Eins"])
+        XCTAssertNil(MeetingStore.read(folder), "zum Öffnen reicht es nicht – das sagt dann die Seite des Meetings")
+    }
+
     // MARK: Suche
 
     func testEmptyQueryFindsEverything() throws {
