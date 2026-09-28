@@ -7,6 +7,7 @@ struct DictionaryPage: View {
     @State private var from = ""
     @State private var to = ""
     @State private var sample = ""
+    @State private var corrected = ""
 
     var body: some View {
         PageScroll {
@@ -18,7 +19,7 @@ struct DictionaryPage: View {
                         InputField(placeholder: L("z. B. ein Name"), text: $word, onSubmit: addWord)
                         Button(L("Hinzufügen"), action: addWord)
                             .buttonStyle(.pill(.primary))
-                            .disabled(word.trimmingCharacters(in: .whitespaces).isEmpty)
+                            .disabled(!canAddWord)
                     }
                     if store.woerter.isEmpty {
                         Text(L("Noch keine Wörter.")).font(.system(size: 12.5)).foregroundStyle(.secondary)
@@ -79,22 +80,42 @@ struct DictionaryPage: View {
                         HStack(alignment: .firstTextBaseline, spacing: 8) {
                             Image(systemName: "arrow.turn.down.right").font(.system(size: 11, weight: .semibold))
                                 .foregroundStyle(.green)
-                            Text(TextCleanup.apply(sample, store.vocabulary, language: SpeechLanguage.current.whisperCode,
-                                                  swiss: SpeechLanguage.current == .swissGerman))
-                                .textSelection(.enabled)
+                            Text(corrected).textSelection(.enabled)
                         }
                         .font(.system(size: 13.5, weight: .medium))
                     }
                 }
                 .card(padding: 16)
+                .onChange(of: sample, initial: true) { correctSample() }
+                .onChange(of: store.woerter) { correctSample() }
+                .onChange(of: store.ersetzungen.map { [$0.von, $0.zu] }) { correctSample() }
                 Footnote(L("Prüft deine Einträge ohne Diktieren: Darunter steht der Satz so, wie Steno ihn nach dem Diktat einfügen würde."))
+            }
+        }
+    }
+
+    /// Ein Wort, das schon in der Liste steht, lässt sich nicht noch einmal hinzufügen – der Knopf zeigt das gleich.
+    private var canAddWord: Bool {
+        let entry = word.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !entry.isEmpty && !store.woerter.contains(entry)
+    }
+
+    /// Auf der Queue der Nachbearbeitung: Die Rechtschreibprüfung verträgt keine gleichzeitigen Aufrufe, etwa während
+    /// ein Meeting läuft, und wäre bei jedem Neuzeichnen auf dem Main-Thread zu langsam.
+    private func correctSample() {
+        let text = sample, vocabulary = store.vocabulary
+        let language = SpeechLanguage.current
+        TextCleanup.queue.async {
+            let result = TextCleanup.apply(text, vocabulary, language: language.whisperCode, swiss: language == .swissGerman)
+            DispatchQueue.main.async {
+                if sample == text { corrected = result }  // ein späterer Satz ist schon unterwegs
             }
         }
     }
 
     private func addWord() {
         let entry = word.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !entry.isEmpty, !store.woerter.contains(entry) else { return }
+        guard canAddWord else { return }
         store.woerter.append(entry)
         word = ""
     }

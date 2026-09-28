@@ -90,7 +90,7 @@ struct MeetingsPage: View {
                 .accessibilityLabel(L("Titel"))
             HStack(spacing: 24) {
                 sourceSwitch(L("Mikrofon"), help: L("Deine Stimme"), source: .microphone)
-                sourceSwitch(L("Mac-Ton"), help: L("Der Ton des Macs: Teams, Zoom, der Browser …"), source: .systemAudio)
+                sourceSwitch(L("Mac-Ton"), help: L("Was der Mac abspielt: Teams, Zoom, der Browser …"), source: .systemAudio)
             }
             HStack(alignment: .center, spacing: 16) {
                 Text(L("Nimm nur auf, wenn alle Beteiligten zustimmen (§ 201 StGB)."))

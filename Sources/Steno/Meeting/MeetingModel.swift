@@ -70,9 +70,9 @@ enum MeetingError: LocalizedError {
         case .alreadyRunning: return L("Es läuft schon ein Meeting.")
         case .noSource: return L("Mikrofon oder Mac-Ton muss eingeschaltet sein.")
         case .microphoneDenied: return L("Kein Mikrofonzugriff – bitte in den Systemeinstellungen erlauben.")
-        case .systemAudioDenied: return L("Keine Freigabe für den Ton des Macs – in den Systemeinstellungen unter „Bildschirm- & Audioaufnahme“ erlauben.")
+        case .systemAudioDenied: return L("Keine Freigabe für den Mac-Ton – in den Systemeinstellungen unter „Bildschirm- & Systemaudioaufnahme“ erlauben.")
         case .unavailable(let speaker):
-            return speaker == .you ? L("Das Mikrofon lässt sich nicht starten.") : L("Der Ton des Macs lässt sich nicht aufnehmen.")
+            return speaker == .you ? L("Das Mikrofon lässt sich nicht starten.") : L("Der Mac-Ton lässt sich nicht aufnehmen.")
         case .folderUnavailable(let name): return L("Der Ordner „%@“ lässt sich nicht beschreiben.", name)
         }
     }

@@ -92,6 +92,7 @@ struct StartPage: View {
     private var meetingCard: some View {
         Button {
             if meeting.state == .idle { meeting.start() }
+            navigation.meeting = nil  // sonst verdeckt ein offenes Meeting „Startet …“ und Startfehler
             navigation.page = .meetings
         } label: {
             HStack(spacing: 14) {
@@ -99,7 +100,7 @@ struct StartPage: View {
                     IconBadge(symbol: "person.2", size: 36)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(L("Meeting starten")).font(.system(size: 14, weight: .semibold))
-                        Text(L("Mikrofon und Ton des Macs, mit Zeitstempel – alles bleibt auf diesem Mac."))
+                        Text(L("Mikrofon und Mac-Ton, mit Zeitstempel – alles bleibt auf diesem Mac."))
                             .font(.system(size: 12.5)).foregroundStyle(.secondary)
                     }
                     Spacer(minLength: 12)

@@ -10,6 +10,7 @@ struct MeetingDetailView: View {
     @State private var unreadable = false
     @State private var copied = false
     @State private var confirmTrash = false
+    @State private var trashFailed = false
 
     var body: some View {
         PageScroll {
@@ -17,6 +18,7 @@ struct MeetingDetailView: View {
                 back
                 PageHeader(title: item.info.title, subtitle: MeetingFormat.summary(of: item.info))
                 actions
+                if trashFailed { MeetingBanner(text: L("Das Meeting ließ sich nicht in den Papierkorb legen.")) }
             }
 
             if let file {
@@ -33,13 +35,14 @@ struct MeetingDetailView: View {
             }
         }
         .task(id: item.id) {
+            trashFailed = false
             file = MeetingStore.read(item.folder)
             unreadable = file == nil
         }
         .confirmationDialog(L("Dieses Meeting in den Papierkorb legen?"), isPresented: $confirmTrash) {
             Button(L("In den Papierkorb"), role: .destructive) {
-                library.trash(item)
-                navigation.meeting = nil
+                // Nur bei Erfolg zurück zur Liste – sonst stünde das Meeting dort kommentarlos weiter.
+                if library.trash(item) { navigation.meeting = nil } else { trashFailed = true }
             }
         } message: {
             Text(L("Protokoll und Bilder liegen danach im Papierkorb."))

@@ -41,6 +41,8 @@ final class MainWindow: NSObject, NSWindowDelegate {
     }
 
     func show(_ page: Page) {
+        // „Meeting starten …“ im Menü landet sonst in einem zuvor geöffneten Meeting statt beim Startformular.
+        if page == .meetings { navigation.meeting = nil }
         navigation.page = page
         if window == nil {
             let window = Self.makeWindow(RootView(navigation: navigation, state: state, models: models,

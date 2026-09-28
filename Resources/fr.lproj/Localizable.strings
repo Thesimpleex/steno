@@ -242,6 +242,7 @@
 "Dieses Meeting in den Papierkorb legen?" = "Placer cette réunion dans la corbeille ?";
 "In den Papierkorb" = "Placer dans la corbeille";
 "Protokoll und Bilder liegen danach im Papierkorb." = "Le compte rendu et les images seront dans la corbeille.";
+"Das Meeting ließ sich nicht in den Papierkorb legen." = "Impossible de placer la réunion dans la corbeille.";
 "Markdown kopieren" = "Copier le Markdown";
 "Im Finder zeigen" = "Afficher dans le Finder";
 "Meeting" = "Réunion";
@@ -255,11 +256,11 @@
 "Andere" = "Autres";
 "Es ist noch kein Sprachmodell geladen." = "Aucun modèle vocal n’est encore chargé.";
 "Es läuft schon ein Meeting." = "Une réunion est déjà en cours.";
-"Mikrofon oder Mac-Ton muss eingeschaltet sein." = "Le microphone ou le son du Mac doit être activé.";
-"Kein Mikrofonzugriff – bitte in den Systemeinstellungen erlauben." = "Pas d’accès au microphone – autorisez-le dans Réglages Système.";
-"Keine Freigabe für den Ton des Macs – in den Systemeinstellungen unter „Bildschirm- & Audioaufnahme“ erlauben." = "Pas d’autorisation pour le son du Mac – autorisez-la dans Réglages Système, sous « Enregistrement de l’écran et de l’audio du système ».";
-"Das Mikrofon lässt sich nicht starten." = "Impossible de démarrer le microphone.";
-"Der Ton des Macs lässt sich nicht aufnehmen." = "Impossible d’enregistrer le son du Mac.";
+"Mikrofon oder Mac-Ton muss eingeschaltet sein." = "Le micro ou le son du Mac doit être activé.";
+"Kein Mikrofonzugriff – bitte in den Systemeinstellungen erlauben." = "Pas d’accès au micro – autorisez-le dans Réglages Système.";
+"Keine Freigabe für den Mac-Ton – in den Systemeinstellungen unter „Bildschirm- & Systemaudioaufnahme“ erlauben." = "Pas d’autorisation pour le son du Mac – autorisez-la dans Réglages Système, sous « Enregistrement de l’écran et de l’audio système ».";
+"Das Mikrofon lässt sich nicht starten." = "Impossible de démarrer le micro.";
+"Der Mac-Ton lässt sich nicht aufnehmen." = "Impossible d’enregistrer le son du Mac.";
 "Der Ordner „%@“ lässt sich nicht beschreiben." = "Impossible d’écrire dans le dossier « %@ ».";
 "Teilnehmer" = "Participants";
 "Return speichert die Notiz. „!“ am Anfang macht eine Aufgabe, ein leeres Return setzt eine Markierung." = "Retour enregistre la note. Un « ! » au début crée une tâche, un Retour sans texte pose un repère.";
@@ -269,7 +270,7 @@
 "So heißen die anderen im Protokoll" = "Nom des autres dans le compte rendu";
 "Kein Sprachmodell geladen – ein Teil des Meetings fehlt." = "Aucun modèle vocal chargé – une partie de la réunion manque.";
 "Die Umwandlung kommt nicht hinterher – der Text folgt etwas später." = "La transcription prend du retard – le texte suivra un peu plus tard.";
-"Das Mikrofon liefert gerade keinen Ton." = "Le microphone ne fournit aucun son pour le moment.";
+"Das Mikrofon liefert gerade keinen Ton." = "Le micro ne fournit aucun son pour le moment.";
 "Vom Ton des Macs kommt gerade nichts an." = "Aucun son du Mac n’arrive pour le moment.";
 "Eintrag löschen" = "Supprimer l’entrée";
 "Aufgabe" = "Tâche";
@@ -280,7 +281,7 @@
 "Titel" = "Titre";
 "Deine Stimme" = "Votre voix";
 "Mac-Ton" = "Son du Mac";
-"Der Ton des Macs: Teams, Zoom, der Browser …" = "Le son du Mac : Teams, Zoom, le navigateur…";
+"Was der Mac abspielt: Teams, Zoom, der Browser …" = "Ce que joue le Mac : Teams, Zoom, le navigateur…";
 "Nimm nur auf, wenn alle Beteiligten zustimmen (§ 201 StGB)." = "N’enregistrez que si tous les participants sont d’accord (§ 201 StGB, Allemagne).";
 "Meeting starten" = "Démarrer la réunion";
 "Startet …" = "Démarrage…";
@@ -296,4 +297,4 @@
 "Jedes Meeting liegt in einem eigenen Ordner mit Protokoll und Bildern. Der Ton wird nie gespeichert." = "Chaque réunion se trouve dans son propre dossier avec le compte rendu et les images. Le son n’est jamais enregistré.";
 "Letzte Meetings" = "Dernières réunions";
 "Return während der Aufnahme schickt den Text nach dem Einfügen gleich ab. ⌘Q schließt nur das Fenster, ⌥⌘Q beendet Steno." = "Retour pendant l’enregistrement colle le texte et l’envoie aussitôt. ⌘Q ferme seulement la fenêtre, ⌥⌘Q quitte Steno.";
-"Mikrofon und Ton des Macs, mit Zeitstempel – alles bleibt auf diesem Mac." = "Microphone et son du Mac, avec horodatage – tout reste sur ce Mac.";
+"Mikrofon und Mac-Ton, mit Zeitstempel – alles bleibt auf diesem Mac." = "Micro et son du Mac, avec horodatage – tout reste sur ce Mac.";
