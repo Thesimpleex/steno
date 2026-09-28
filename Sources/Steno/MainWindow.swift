@@ -101,7 +101,7 @@ struct RootView: View {
                 .zIndex(1)
             Group {
                 switch navigation.page {
-                case .start: StartPage(state: state, navigation: navigation)
+                case .start: StartPage(state: state, navigation: navigation, meeting: meeting, library: library)
                 case .meetings: MeetingsPage(navigation: navigation, meeting: meeting, library: library)
                 case .history: HistoryPage(navigation: navigation)
                 case .dictionary: DictionaryPage()
