@@ -306,6 +306,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             .store(in: &subscriptions)
         meeting.$levels
             .removeDuplicates()
+            .receive(on: DispatchQueue.main)
             .sink { [model = dictation.overlay.model] in model.meetingLevels = $0 }
             .store(in: &subscriptions)
     }
