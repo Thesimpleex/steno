@@ -447,9 +447,17 @@ final class Dictation {
 enum Sound {
     case start, stop
 
+    /// `play()` hält auf, bis der Ton läuft: beim ersten Mal über 200 ms, danach 10–25 ms. Die Anzeige soll
+    /// darauf nicht warten.
+    private static let queue = DispatchQueue(label: "steno.sound", qos: .userInitiated)
+
     func play() {
-        guard Settings.sounds, let sound = NSSound(named: self == .start ? "Tink" : "Pop")?.copy() as? NSSound else { return }
-        sound.volume = 0.3
-        sound.play()
+        guard Settings.sounds else { return }
+        let name = self == .start ? "Tink" : "Pop"
+        Self.queue.async {
+            guard let sound = NSSound(named: name)?.copy() as? NSSound else { return }
+            sound.volume = 0.3
+            sound.play()
+        }
     }
 }
