@@ -34,11 +34,13 @@
 	<string>Steno pausiert Spotify und Apple Music, solange du diktierst, und spielt danach weiter.</string>
 	<key>NSAudioCaptureUsageDescription</key>
 	<string>Steno hört bei einem Meeting den Ton deines Macs mit, damit auch die anderen Teilnehmer im Protokoll stehen. Ton wird nie gespeichert.</string>
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>Steno legt deine Meetings als Ordner unter Dokumente › Steno Meetings ab, solange du keinen anderen Ort wählst.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSHumanReadableCopyright</key>
 	<string>© 2026 Thesimpleex · MIT License</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Steno nimmt deine Stimme nur auf, während du diktierst. Alles bleibt auf diesem Mac.</string>
+	<string>Steno nimmt deine Stimme nur auf, während du diktierst oder ein Meeting läuft. Alles bleibt auf diesem Mac.</string>
 </dict>
 </plist>

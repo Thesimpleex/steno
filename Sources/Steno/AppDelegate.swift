@@ -316,8 +316,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
               UserDefaults.standard.string(forKey: Self.autostartPathKey) != path else { return }
         // Schlägt es fehl, zeigt das Menü danach den echten Stand.
         try? SMAppService.mainApp.unregister()
-        if (try? SMAppService.mainApp.register()) != nil {
+        do {
+            try SMAppService.mainApp.register()
             UserDefaults.standard.set(path, forKey: Self.autostartPathKey)
+        } catch {
+            // Sonst wäre der Autostart still aus.
+            dictation.overlay.showMessage(L("Beim Anmelden öffnen ließ sich nicht einschalten: %@", error.localizedDescription), seconds: 4)
         }
     }
 
@@ -362,7 +366,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func showElapsedTime() {
-        statusItem.button?.title = Elapsed.text(max(0, Int(Date.now.timeIntervalSince(meeting.info.startedAt))))
+        statusItem.button?.title = MeetingMarkdown.timestamp(Date.now.timeIntervalSince(meeting.info.startedAt))
     }
 
     // MARK: Menüleiste

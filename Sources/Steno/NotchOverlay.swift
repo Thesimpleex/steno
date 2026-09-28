@@ -562,15 +562,9 @@ private struct PulsingDot: View {
 struct Elapsed: View {
     let since: Date
 
-    /// „7:05“, ab einer Stunde „1:07:05“.
-    static func text(_ seconds: Int) -> String {
-        seconds >= 3600 ? String(format: "%d:%02d:%02d", seconds / 3600, seconds / 60 % 60, seconds % 60)
-                        : String(format: "%d:%02d", seconds / 60, seconds % 60)
-    }
-
     var body: some View {
         TimelineView(.periodic(from: since, by: 1)) { context in
-            Text(Self.text(max(0, Int(context.date.timeIntervalSince(since)))))
+            Text(MeetingMarkdown.timestamp(context.date.timeIntervalSince(since)))
                 .font(.system(size: 11, weight: .medium).monospacedDigit())
                 .foregroundStyle(.white.opacity(0.85))
         }

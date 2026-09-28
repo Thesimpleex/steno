@@ -136,6 +136,7 @@ Hotkey ──▶ HotKeyMonitor ──▶ Dictation (state machine) ──▶ Mic
 | `HotKeyMonitor.swift` | Event tap on its own thread: hold, tap, chords, Esc, ⌃⌥V |
 | `HotKey.swift` | The selectable dictation keys (⌥, ⌘, ⌃, ⇧, fn) |
 | `Dictation.swift` | Recording state machine: hold, hands-free, resume after Esc or an early release |
+| `Microphone.swift` | Captures from the chosen microphone via AVCaptureSession, so AirPods stay out of headset mode |
 | `Transcriber.swift` | whisper.cpp wrapper on a serial queue |
 | `TextCleanup.swift` | Hallucination filter, fuzzy name correction, replacements |
 | `TextInsertion.swift` | Focus detection via Accessibility, paste with clipboard restore |
@@ -151,7 +152,7 @@ Hotkey ──▶ HotKeyMonitor ──▶ Dictation (state machine) ──▶ Mic
 git clone https://github.com/Thesimpleex/steno.git && cd steno
 ./build.sh --install          # builds Steno.app and copies it to /Applications
 ./release.sh                  # builds build/Steno.dmg
-swift test                    # dictionary correction and hotkey logic
+swift test                    # dictionary, hotkeys, meetings, chunker, store and Markdown
 python3 tools/check-strings.py   # every UI string translated?
 tools/screenshots.sh /tmp/steno-shots en   # renders every window (light and dark) without screen recording
 ```
