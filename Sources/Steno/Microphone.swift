@@ -21,13 +21,8 @@ final class Microphone {
     var onFailure: ((Error) -> Void)?
 
     private let queue = DispatchQueue(label: "steno.microphone", qos: .userInitiated)
-    /// `input`: das Standard-Mikrofon beim Öffnen – wechselt es, taugt das vorbereitete Gerät nicht mehr.
-    private typealias Prepared = (engine: AVAudioEngine, number: Int, input: AudioDeviceID?)
-    // Nur auf `queue`: das laufende Gerät und eines, das vorbereitet auf seinen Start wartet.
-    private var engine: AVAudioEngine?
-    private var spare: Prepared?
-    private var spareExpiry: DispatchWorkItem?
-    private var built = 0
+    private var engine: AVAudioEngine?  // nur auf `queue`: das laufende Gerät
+    private var opened = 0              // nur auf `queue`
 
     private var capture = Capture()
     private let lock = NSLock()  // für `capture`
@@ -36,20 +31,14 @@ final class Microphone {
 
     static var authorized: Bool { AVCaptureDevice.authorizationStatus(for: .audio) == .authorized }
 
-    /// Öffnet das Gerät schon, ohne aufzunehmen: Startet die Aufnahme gleich danach, geht es schneller.
-    /// Bleibt es ungenutzt, wird es nach ein paar Sekunden wieder geschlossen.
-    func prepare() {
-        queue.async {
-            if let prepared = try? self.prepared() { self.keep(prepared) }
-        }
-    }
-
     /// Für Diktate: startet auf der eigenen Queue. Ob es geklappt hat, melden `onListening` und `onFailure`.
     func startInBackground() {
         let id = lock.withLock { capture.request() }
         queue.async {
             do {
-                try self.launch(self.prepared(), for: id)
+                // Die Abfrage der Freigabe dauert jedes Mal einige Millisekunden, deshalb hier statt auf dem Hauptthread.
+                guard Self.authorized else { throw Failure.notAllowed }
+                try self.open(for: id)
             } catch {
                 DispatchQueue.main.async {
                     if self.lock.withLock({ self.capture.isWanted(id) }) { self.onFailure?(error) }
@@ -60,7 +49,7 @@ final class Microphone {
 
     /// Startet sofort; wartet, bis das Gerät läuft.
     func start() throws {
-        try queue.sync { try launch(takeSpare() ?? build(), for: nil) }
+        try queue.sync { try open(for: nil) }
     }
 
     /// Was bisher aufgenommen wurde, ohne die Aufnahme zu beenden.
@@ -68,7 +57,7 @@ final class Microphone {
         lock.withLock { capture.samples }
     }
 
-    /// Beendet die Aufnahme und liefert, was bis hierher kam. Das Gerät hält danach im Hintergrund an.
+    /// Beendet die Aufnahme und liefert, was bis hierher kam. Das Gerät hält danach im Hintergrund an und wird freigegeben.
     func stop() -> [Float] {
         let samples = lock.withLock { capture.end() }
         queue.async {
@@ -79,32 +68,18 @@ final class Microphone {
         return samples
     }
 
-    /// Für Diktate: das vorbereitete Gerät, sonst ein neues – das nur mit Freigabe. Die Abfrage dauert jedes Mal
-    /// einige Millisekunden, deshalb hier statt auf dem Hauptthread. Nur auf `queue`.
-    private func prepared() throws -> Prepared {
-        if let spare = takeSpare() { return spare }
-        guard Self.authorized else { throw Failure.notAllowed }
-        return try build()
-    }
-
-    /// `id`: die Aufnahme, für die gestartet wird. Ist sie inzwischen schon wieder beendet, bleibt das Gerät
-    /// nur vorbereitet – so geht bei ⌥L & Co. kein Mikrofon an. Nur auf `queue`.
-    private func launch(_ prepared: Prepared, for id: Int?) throws {
-        guard lock.withLock({ capture.begin(id, engine: prepared.number) }) else { return keep(prepared) }
-        try prepared.engine.start()
-        engine = prepared.engine
-    }
-
-    /// Alles außer dem Start: Gerät wählen, Format, Umwandlung, Abgriff. Nur auf `queue`.
-    private func build() throws -> Prepared {
+    /// Öffnet und startet das Gerät für Aufnahme `id`. Ist sie schon wieder beendet (⌥L & Co.), wird das Gerät
+    /// gar nicht erst angefasst – sonst schaltet etwa ein Bluetooth-Kopfhörer um. Nur auf `queue`.
+    private func open(for id: Int?) throws {
+        opened += 1
+        let number = opened
+        guard lock.withLock({ capture.begin(id, engine: number) }) else { return }
         let engine = AVAudioEngine()
         let input = engine.inputNode
-        let defaultInput = Self.defaultInput
         // Ist das Standard-Mikrofon ein Bluetooth-Headset (AirPods), das eingebaute nehmen: sonst fällt
         // der Kopfhörer beim Musikhören in den schlechten Headset-Modus. Sonst gilt die Systemeinstellung.
         // Bei zugeklapptem MacBook ist das eingebaute Mikrofon stumm – dann bleibt es beim Headset.
-        if let defaultInput, Self.isBluetooth(defaultInput), !Self.lidClosed, var device = Self.builtInMicrophone(),
-           let unit = input.audioUnit {
+        if Self.defaultInputIsBluetooth, !Self.lidClosed, var device = Self.builtInMicrophone(), let unit = input.audioUnit {
             AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0,
                                  &device, UInt32(MemoryLayout<AudioDeviceID>.size))
         }
@@ -112,28 +87,11 @@ final class Microphone {
         guard inputFormat.sampleRate > 0, let converter = AVAudioConverter(from: inputFormat, to: Self.format) else {
             throw Failure.noInput
         }
-        built += 1
-        let number = built
         input.installTap(onBus: 0, bufferSize: 2048, format: inputFormat) { [weak self] buffer, _ in
             self?.receive(buffer, converter: converter, from: number)
         }
-        engine.prepare()
-        return (engine, number, defaultInput)
-    }
-
-    /// Hebt ein vorbereitetes Gerät kurz auf. Nur auf `queue`.
-    private func keep(_ prepared: Prepared) {
-        spare = prepared
-        spareExpiry?.cancel()
-        let expiry = DispatchWorkItem { [weak self] in self?.spare = nil }
-        spareExpiry = expiry
-        queue.asyncAfter(deadline: .now() + 5, execute: expiry)
-    }
-
-    /// Das vorbereitete Gerät – aber nur, solange dasselbe Mikrofon Standard ist. Nur auf `queue`.
-    private func takeSpare() -> Prepared? {
-        defer { spare = nil }
-        return spare?.input == Self.defaultInput ? spare : nil
+        try engine.start()
+        self.engine = engine
     }
 
     /// Auf dem Audio-Thread.
@@ -193,18 +151,13 @@ final class Microphone {
         return Array(UnsafeBufferPointer(start: data, count: Int(output.frameLength)))
     }
 
-    /// Das Standard-Mikrofon laut Systemeinstellungen.
-    private static var defaultInput: AudioDeviceID? {
+    private static var defaultInputIsBluetooth: Bool {
         var address = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDefaultInputDevice,
                                                  mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
         var device = AudioDeviceID(0)
         var size = UInt32(MemoryLayout<AudioDeviceID>.size)
         guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &device) == noErr
-        else { return nil }
-        return device
-    }
-
-    private static func isBluetooth(_ device: AudioDeviceID) -> Bool {
+        else { return false }
         let type = transportType(device)
         return type == kAudioDeviceTransportTypeBluetooth || type == kAudioDeviceTransportTypeBluetoothLE
     }

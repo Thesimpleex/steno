@@ -138,8 +138,6 @@ final class Dictation {
         }
         pressedAt = time
         guard mode == .idle else { return }
-        // Das Mikrofon öffnet schon, während noch offen ist, ob ein Diktat oder ein Kürzel wie ⌥L kommt.
-        microphone.prepare()
         schedule(&pendingStart, after: Timing.holdDelay) { [weak self] in self?.startRecording(.holding) }
     }
 
