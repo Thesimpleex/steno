@@ -323,6 +323,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         meetingClock = nil
         guard running else {
             clipboardImages.stop()
+            quickNote.close()  // eine Notiz fände kein laufendes Meeting mehr
             dictation.overlay.endMeeting()
             statusItem.button?.title = ""
             statusItem.button?.imagePosition = .imageOnly

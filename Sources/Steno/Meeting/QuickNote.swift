@@ -52,7 +52,7 @@ final class QuickNote: NSObject, NSTextFieldDelegate, NSWindowDelegate {
         close(restoringFocus: false)
     }
 
-    private func close(restoringFocus: Bool = true) {
+    func close(restoringFocus: Bool = true) {
         guard panel.isVisible else { return }
         let previous = previousApp
         previousApp = nil
