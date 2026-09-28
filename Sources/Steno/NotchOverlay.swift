@@ -79,10 +79,32 @@ final class NotchOverlay {
                              userInfo: [.announcement: text, .priority: NSAccessibilityPriorityLevel.high.rawValue])
     }
 
+    /// Der leise Hinweis, solange ein Meeting läuft. Diktat-Anzeigen legen sich vorübergehend darüber;
+    /// `hide()` führt danach hierher zurück.
+    func showMeeting(since start: Date, sources: MeetingSources) {
+        model.meetingStart = start
+        model.meetingSources = sources
+        model.meetingLevels = MeetingLevels()
+        if model.state == .hidden { show(.meeting) }
+    }
+
+    func endMeeting() {
+        model.meetingStart = nil
+        if model.state == .meeting { hide() }
+    }
+
+    /// Kurze Bestätigung. Ein laufendes Diktat und ein angezeigtes Ergebnis bleiben stehen.
+    func confirm(_ text: String) {
+        switch model.state {
+        case .hidden, .meeting, .message: showMessage(text, seconds: 1.5)
+        case .recording, .working, .result: break
+        }
+    }
+
     /// Kurze Vorführung mit erfundenem Pegel – für die Auswahl in den Einstellungen.
     func preview() {
         switch model.state {
-        case .hidden, .message: break
+        case .hidden, .meeting, .message: break
         case .recording where previewTimer != nil: break
         default: return  // nie über eine echte Aufnahme oder ein Ergebnis legen
         }
@@ -109,7 +131,7 @@ final class NotchOverlay {
         generation += 1
         stopMouseTracking()
         guard model.state != .hidden || panel.isVisible else { return }
-        withAnimation(.spring(response: 0.32, dampingFraction: 0.9)) { model.state = .hidden }
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.9)) { model.state = model.resting }
         let work = DispatchWorkItem { [weak self] in
             if self?.model.state == .hidden { self?.panel.orderOut(nil) }
         }
@@ -200,6 +222,8 @@ final class OverlayModel: ObservableObject {
         case working
         case result(String)
         case message(String)
+        /// Der leise Dauerhinweis, solange ein Meeting läuft.
+        case meeting
     }
 
     @Published var state = State.hidden
@@ -207,11 +231,18 @@ final class OverlayModel: ObservableObject {
     @Published var copied = false
     @Published var startedAt = Date.now
     @Published var geometry = NotchGeometry(nil)
+    /// Beginn und Quellen des laufenden Meetings; nil, solange keins läuft.
+    @Published var meetingStart: Date?
+    @Published var meetingSources: MeetingSources = [.microphone, .systemAudio]
+    @Published var meetingLevels = MeetingLevels()
 
     func push(level: Float) {
         levels.removeFirst()
         levels.append(CGFloat(level))
     }
+
+    /// Wohin die Anzeige zurückkehrt, wenn nichts anderes zu zeigen ist.
+    var resting: State { meetingStart == nil ? .hidden : .meeting }
 }
 
 struct NotchGeometry: Equatable {
@@ -247,6 +278,7 @@ struct NotchGeometry: Equatable {
             switch state {
             case .hidden: return CGSize(width: 150, height: 40)
             case .recording, .working: return CGSize(width: 196, height: 40)
+            case .meeting: return CGSize(width: 132, height: 32)
             case .message: return CGSize(width: 380, height: 54)
             case .result: return CGSize(width: 500, height: 92)
             }
@@ -254,7 +286,7 @@ struct NotchGeometry: Equatable {
         let compact = CGSize(width: (hasNotch ? notchWidth : 70) + 2 * 78 + 2 * NotchShape.ear, height: barHeight)
         switch state {
         case .hidden: return hasNotch ? CGSize(width: notchWidth, height: barHeight) : CGSize(width: compact.width, height: 0)
-        case .recording, .working: return compact
+        case .recording, .working, .meeting: return compact
         case .message: return CGSize(width: max(compact.width, 380), height: barHeight + 52)
         case .result: return CGSize(width: max(compact.width, 460), height: barHeight + 92)
         }
@@ -375,7 +407,7 @@ struct OverlayView: View {
 
     @ViewBuilder private var bubbleContent: some View {
         switch model.state {
-        case .recording, .working:
+        case .recording, .working, .meeting:
             HStack(spacing: 10) {
                 leading
                 Spacer(minLength: 8)
@@ -410,6 +442,11 @@ struct OverlayView: View {
             }
         case .working:
             Image(systemName: "waveform").font(.system(size: 11, weight: .semibold)).symbolEffect(.variableColor.iterative)
+        case .meeting:
+            HStack(spacing: 6) {
+                PulsingDot(pulsing: false)
+                Elapsed(since: model.meetingStart ?? .now)
+            }
         case .message:
             Image(systemName: "info.circle.fill").font(.system(size: 11))
         case .hidden, .result:
@@ -421,6 +458,7 @@ struct OverlayView: View {
         switch model.state {
         case .recording: LevelHistory(levels: model.levels, dimmed: false)
         case .working: LevelHistory(levels: model.levels, dimmed: true)
+        case .meeting: MeetingLevelBars(levels: model.meetingLevels, sources: model.meetingSources)
         default: EmptyView()
         }
     }
@@ -466,27 +504,54 @@ struct OverlayView: View {
 }
 
 private struct PulsingDot: View {
+    var pulsing = true
     @State private var bright = false
 
     var body: some View {
         Circle()
             .fill(Color(red: 1, green: 0.27, blue: 0.23))
             .frame(width: 7, height: 7)
-            .opacity(bright ? 1 : 0.35)
-            .onAppear { withAnimation(.easeInOut(duration: 0.7).repeatForever()) { bright = true } }
+            .opacity(bright || !pulsing ? 1 : 0.35)
+            .onAppear {
+                if pulsing { withAnimation(.easeInOut(duration: 0.7).repeatForever()) { bright = true } }
+            }
     }
 }
 
-private struct Elapsed: View {
+struct Elapsed: View {
     let since: Date
+
+    /// „7:05“, ab einer Stunde „1:07:05“.
+    static func text(_ seconds: Int) -> String {
+        seconds >= 3600 ? String(format: "%d:%02d:%02d", seconds / 3600, seconds / 60 % 60, seconds % 60)
+                        : String(format: "%d:%02d", seconds / 60, seconds % 60)
+    }
 
     var body: some View {
         TimelineView(.periodic(from: since, by: 1)) { context in
-            let seconds = max(0, Int(context.date.timeIntervalSince(since)))
-            Text(String(format: "%d:%02d", seconds / 60, seconds % 60))
+            Text(Self.text(max(0, Int(context.date.timeIntervalSince(since)))))
                 .font(.system(size: 11, weight: .medium).monospacedDigit())
                 .foregroundStyle(.white.opacity(0.85))
         }
+    }
+}
+
+/// Zwei winzige Pegel: links du, rechts die anderen. Eine Quelle, die nicht läuft, bekommt keinen.
+private struct MeetingLevelBars: View {
+    let levels: MeetingLevels
+    let sources: MeetingSources
+
+    var body: some View {
+        HStack(spacing: 3) {
+            if sources.contains(.microphone) { bar(levels.you) }
+            if sources.contains(.systemAudio) { bar(levels.others) }
+        }
+        .frame(height: 20)
+        .animation(.easeOut(duration: 0.1), value: levels)
+    }
+
+    private func bar(_ level: Float) -> some View {
+        Capsule().fill(.white.opacity(0.6)).frame(width: 3, height: 3 + 13 * CGFloat(min(1, level)))
     }
 }
 

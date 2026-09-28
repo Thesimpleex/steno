@@ -137,7 +137,7 @@ enum DevTools {
     }
 
     private static var overlayStates: [(String, OverlayModel.State)] {
-        [("recording", .recording(handsFree: false)), ("handsfree", .recording(handsFree: true)), ("working", .working),
+        [("recording", .recording(handsFree: false)), ("handsfree", .recording(handsFree: true)), ("working", .working), ("meeting", .meeting),
          ("message", .message(L("Bereit – %@ halten oder zweimal tippen", HotKey.leftOption.shortName))),
          ("result", .result(L("Das ist ein Beispieltext, der ohne aktives Textfeld erscheint und kopiert werden kann.")))]
     }
