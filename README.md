@@ -24,7 +24,7 @@ are subscriptions, though, and some send your voice to a server. Steno does the 
   Hugging Face, pinned to a fixed revision and verified by SHA-256.
 - Whisper Large v3 Turbo runs on the Apple GPU, so a sentence is usually ready in under a second.
 - It works in any text field – chat apps, AI assistants, mail, editors, terminals.
-- It is MIT-licensed, about 5,000 lines of Swift, with no telemetry and no dependencies beyond whisper.cpp.
+- It is MIT-licensed, about 8,000 lines of Swift, with no telemetry and no dependencies beyond whisper.cpp.
 
 ## Who it's for
 
@@ -44,6 +44,8 @@ anyone for whom typing is tiring or painful – because of RSI, dyslexia, or sim
   key, such as ⌥L for @ on German keyboards, don't trigger dictation.
 - It forgives slips: let go too early during a dictation of three seconds or more and press again right away, and it is
   still the same recording. Canceled with Esc by accident? Press the key within 3 seconds to pick up where you left off.
+- Press Return while you are still recording and Steno pastes the text and presses Return for you – handy for chat apps
+  and AI assistants.
 - ⌃⌥V pastes the last dictation again, for example when it landed in the wrong window.
 - A small black overlay shows that Steno is listening. It grows out of the notch, or floats as a bubble above the Dock
   on Macs without one – automatically or as you prefer. If no text field is focused, the text waits there with a copy
@@ -51,6 +53,16 @@ anyone for whom typing is tiring or painful – because of RSI, dyslexia, or sim
 - Steno adds a leading space when needed and restores your clipboard afterwards. Secrets from password managers and
   very large items are deliberately not put back, and the temporary clipboard stays on this Mac instead of going to
   your other devices via Universal Clipboard. While a password field is active, Steno neither records nor pastes.
+
+### Meetings
+
+- Transcribe a conversation with timestamps: your microphone is "You", the sound of your Mac – Teams, Zoom, the
+  browser – is "Others", renamable per meeting ("Ms Meyer"). Either source can be switched off.
+- ⌃⌥N adds a note while the meeting runs. An empty note sets a marker, a leading "!" makes it a task. A screenshot taken
+  with ⌘⌃⇧4 lands in the timeline at that moment.
+- Every meeting is a folder in a place you choose: `Protokoll.md`, `meeting.json` and the images. The Markdown reads
+  well as plain text, opens in any editor, and the list in Steno searches all of it. Audio is never saved.
+- Only record when everyone involved agrees (§ 201 StGB in Germany).
 
 ### Recognition
 
@@ -88,7 +100,8 @@ You need a Mac with Apple silicon (M1 or later), macOS 14.2 or later and at leas
    message (**Done** or **OK**, depending on your macOS version).
 3. In **System Settings › Privacy & Security**, scroll down to the note that Steno was blocked and click
    **Open Anyway**.
-4. The setup assistant takes care of the rest: microphone, Accessibility and the model download.
+4. The setup assistant takes care of the rest: microphone, Accessibility and the model download. The first meeting asks
+   once for permission to hear your Mac's sound.
 
 > **Why Accessibility?** Steno needs it to notice the dictation key, to check whether a text field is focused (and
 > whether the character before the cursor needs a space) and to paste the text. Key presses are never recorded or
@@ -99,9 +112,10 @@ You need a Mac with Apple silicon (M1 or later), macOS 14.2 or later and at leas
 
 ## Privacy
 
-- Audio is recorded **only while you dictate** and is never written to disk.
+- Audio is recorded **only while you dictate or a meeting runs** and is never written to disk.
 - Transcription runs **entirely on your Mac** (whisper.cpp with Metal).
 - History and dictionary are plain JSON files in `~/Library/Application Support/Steno/` – yours to inspect or delete.
+  Meetings are ordinary folders in the place you chose.
 - No analytics, no crash reporting, no accounts. The only connection is the model download from
   [Hugging Face](https://huggingface.co/ggerganov/whisper.cpp), pinned to a fixed revision and verified by SHA-256.
 
@@ -127,6 +141,9 @@ Hotkey ──▶ HotKeyMonitor ──▶ Dictation (state machine) ──▶ Mic
 | `TextInsertion.swift` | Focus detection via Accessibility, paste with clipboard restore |
 | `ModelStore.swift` | Model catalog, verified downloads, switching |
 | `NotchOverlay.swift` | The black overlay: grows out of the notch or floats as a bubble |
+| `Meeting/MeetingSession.swift` | Meetings: cuts microphone and Mac sound at pauses, transcribes in the background, keeps the timeline |
+| `Meeting/SystemAudio.swift` | The sound of the Mac through a Core Audio tap |
+| `Meeting/MeetingStore.swift` | Meeting folders: `meeting.json`, `Protokoll.md`, images |
 
 ## Build from source
 
@@ -173,6 +190,10 @@ steht dort, wo dein Cursor ist. Whisper läuft komplett auf deinem Mac: keine Cl
 - ⌥ halten zum Diktieren, zweimal tippen für den Freihandmodus, Esc bricht ab (innerhalb von 3 Sekunden geht es
   weiter), ⌃⌥V fügt das letzte Diktat noch einmal ein. Die Taste ist frei wählbar: ⌥, ⌘, ⌃, ⇧ oder fn.
 - Zu früh losgelassen? Ab drei Sekunden Aufnahme genügt sofortiges Drücken, dann läuft dieselbe Aufnahme weiter.
+- Return während der Aufnahme fügt den Text ein und drückt danach selbst Return – praktisch für Chats und KI-Assistenten.
+- Meetings mit Zeitstempeln: dein Mikrofon ist „Du“, der Ton des Macs (Teams, Zoom, Browser) sind „Andere“. Mit ⌃⌥N
+  kommen Notizen, Markierungen und Aufgaben dazu, ein Screenshot mit ⌘⌃⇧4 landet in der Zeitleiste. Jedes Meeting ist
+  ein Ordner mit `Protokoll.md`; der Ton wird nie gespeichert. Nur aufnehmen, wenn alle zustimmen (§ 201 StGB).
 - Die Anzeige wächst aus der Notch – auf Macs ohne Notch schwebt sie als Blase über dem Dock.
 - Ein eigenes Wörterbuch korrigiert ähnlich klingende Namen automatisch; Wörter, die macOS kennt, bleiben stehen.
 - Modelle von 148 MB bis 3,1 GB, Verlauf mit wählbarer Aufbewahrung, Musikpause und ein Einrichtungsassistent.
