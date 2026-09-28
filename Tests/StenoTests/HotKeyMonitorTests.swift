@@ -144,9 +144,12 @@ final class HotKeyMonitorTests: XCTestCase {
         return monitor.feed(.keyDown, event)
     }
 
-    /// Der Monitor meldet über den Hauptthread – kurz laufen lassen, dann einsammeln.
+    /// Der Monitor meldet über den Hauptthread, und was er bis hierher gemeldet hat, steht dort schon an: Ist eine
+    /// Markierung dahinter an der Reihe, ist alles angekommen – anders als nach einer festen Wartezeit auch unter Last.
     private func drain() -> [String] {
-        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+        let delivered = expectation(description: "alle Meldungen zugestellt")
+        DispatchQueue.main.async { delivered.fulfill() }
+        wait(for: [delivered], timeout: 5)
         defer { events = [] }
         return events
     }
