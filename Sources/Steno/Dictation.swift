@@ -39,7 +39,7 @@ final class Dictation {
     private var resumed: (samples: [Float], duration: TimeInterval)?
     /// Kam fertig, während schon die nächste Aufnahme lief – wird danach gezeigt.
     private var pendingResult: String?
-    private var lastInsertion: (date: Date, app: String?)?
+    private var spacing = Spacing()
     private var pendingStart: DispatchWorkItem?
     private var pendingMediaPause: DispatchWorkItem?
     private var recordingLimit: DispatchWorkItem?
@@ -455,20 +455,10 @@ final class Dictation {
         }
     }
 
-    /// Mit Leerzeichen davor, wenn direkt vor dem Cursor schon Text steht. Lässt sich das Zeichen
-    /// nicht lesen (Terminal), zählt: gerade eben schon in dieselbe App diktiert.
     private func insert(_ text: String, at target: TextInsertion.Target, send: Bool = false) {
         let app = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
-        let needsSpace: Bool
-        if let before = target.characterBefore {
-            needsSpace = before.last.map { !$0.isWhitespace && !"([{„‚»/".contains($0) } ?? false
-        } else if let last = lastInsertion {
-            needsSpace = last.app == app && Date.now.timeIntervalSince(last.date) < 120
-        } else {
-            needsSpace = false
-        }
-        TextInsertion.paste(needsSpace ? " " + text : text, send: send)
-        lastInsertion = (.now, app)
+        TextInsertion.paste(spacing.needed(before: target.characterBefore, in: app) ? " " + text : text, send: send)
+        spacing.inserted(in: app, sent: send)
     }
 
     private func schedule(_ slot: inout DispatchWorkItem?, after seconds: Double, _ action: @escaping () -> Void) {
@@ -476,6 +466,26 @@ final class Dictation {
         let work = DispatchWorkItem(block: action)
         slot = work
         DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: work)
+    }
+}
+
+extension Dictation {
+    /// Ob ein Diktat ein Leerzeichen davor bekommt.
+    struct Spacing {
+        private var last: (date: Date, app: String?)?
+
+        /// Ja, wenn direkt vor dem Cursor schon Text steht. Lässt sich das Zeichen nicht lesen (Terminal), zählt:
+        /// gerade eben schon in dieselbe App diktiert.
+        func needed(before: String?, in app: String?, now: Date = .now) -> Bool {
+            if let before { return before.last.map { !$0.isWhitespace && !"([{„‚»/".contains($0) } ?? false }
+            guard let last else { return false }
+            return last.app == app && now.timeIntervalSince(last.date) < 120
+        }
+
+        /// Nach Return steht der Cursor am Anfang einer neuen Zeile – dort gehört kein Leerzeichen hin.
+        mutating func inserted(in app: String?, sent: Bool, now: Date = .now) {
+            last = sent ? nil : (now, app)
+        }
     }
 }
 
