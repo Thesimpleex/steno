@@ -51,7 +51,7 @@ final class MainWindow: NSObject, NSWindowDelegate {
         }
         // Solange das Fenster offen ist, mit Dock-Symbol und über ⌘⇥ erreichbar.
         NSApp.setActivationPolicy(.regular)
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.activate()
         window?.makeKeyAndOrderFront(nil)
     }
 

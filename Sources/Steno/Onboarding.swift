@@ -36,7 +36,7 @@ final class Onboarding: NSObject, NSWindowDelegate {
             self.window = window
         }
         NSApp.setActivationPolicy(.regular)
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.activate()
         window?.makeKeyAndOrderFront(nil)
     }
 

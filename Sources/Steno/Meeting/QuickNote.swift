@@ -40,7 +40,7 @@ final class QuickNote: NSObject, NSTextFieldDelegate, NSWindowDelegate {
             // Etwas unter dem oberen Rand, damit die Anzeige an der Notch frei bleibt.
             panel.setFrameOrigin(NSPoint(x: area.midX - Self.size.width / 2, y: area.maxY - Self.size.height - 64))
         }
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.activate()
         panel.makeKeyAndOrderFront(nil)
         panel.makeFirstResponder(field)
     }
