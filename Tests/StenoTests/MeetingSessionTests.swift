@@ -224,6 +224,13 @@ final class MeetingSessionTests: XCTestCase {
         XCTAssertTrue(session.entries.allSatisfy { $0.offset >= 0 && $0.offset < 1 })
     }
 
+    func testPreviewNotesFitItsStartTime() {
+        let preview = MeetingSession(state: .running, info: MeetingInfo(title: "", startedAt: .now - 60, sources: .microphone),
+                                     microphone: FakeSource(), systemAudio: FakeSource())
+        preview.addNote("Vorschau")
+        XCTAssertEqual(preview.entries.first?.offset ?? 0, 60, accuracy: 1)
+    }
+
     func testSameScreenshotOnlyOnce() throws {
         try session.start(title: "", sources: .microphone)
         let red = image(.red)

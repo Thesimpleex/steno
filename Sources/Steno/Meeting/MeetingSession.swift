@@ -86,6 +86,7 @@ final class MeetingSession: ObservableObject {
         self.microphone = microphone
         self.systemAudio = systemAudio
         self.filing = filing
+        origin = Self.clock() - Date.now.timeIntervalSince(info.startedAt)  // eine Notiz in der Vorschau passt zur Startzeit
         hook(microphone, as: .you)
         hook(systemAudio, as: .others)
     }
