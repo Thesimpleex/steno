@@ -23,9 +23,9 @@ final class MeetingMarkdownTests: XCTestCase {
         MeetingEntry(offset: offset, kind: kind)
     }
 
-    /// Die Zeilen unter „## Verlauf“.
+    /// Die Zeilen unter „## Mitschrift“.
     private func timeline(_ text: String) -> [String] {
-        text.components(separatedBy: "\n\n").drop { $0 != "## Verlauf" }.dropFirst().map { $0.trimmingCharacters(in: .newlines) }
+        text.components(separatedBy: "\n\n").drop { $0 != "## Mitschrift" }.dropFirst().map { $0.trimmingCharacters(in: .newlines) }
     }
 
     func testFullProtocol() {
@@ -50,7 +50,7 @@ final class MeetingMarkdownTests: XCTestCase {
             - [ ] 12:40 Angebot an Herrn Meier schicken
             - [ ] 41:05 Termin für die Abnahme festlegen
 
-            ## Verlauf
+            ## Mitschrift
 
             **0:12 Du:** Guten Morgen zusammen. Ich habe die Unterlagen dabei.
 
@@ -73,7 +73,7 @@ final class MeetingMarkdownTests: XCTestCase {
 
             Montag, 28. September 2026 · Dauer 1:05:30
 
-            ## Verlauf
+            ## Mitschrift
 
             **0:05 Andere:** Hallo.
 

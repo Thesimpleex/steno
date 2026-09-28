@@ -28,7 +28,7 @@ enum MeetingMarkdown {
         }
         if !tasks.isEmpty { blocks += ["## " + L("Aufgaben"), tasks.joined(separator: "\n")] }
 
-        blocks.append("## " + L("Verlauf"))
+        blocks.append("## " + L("Mitschrift"))
         blocks += timeline(entries, othersLabel: info.othersLabel)
         return blocks.joined(separator: "\n\n") + "\n"
     }
@@ -40,7 +40,7 @@ enum MeetingMarkdown {
         return hours > 0 ? String(format: "%lld:%02lld:%02lld", hours, minutes, rest) : String(format: "%lld:%02lld", minutes, rest)
     }
 
-    /// Eine Zeile pro Eintrag; Aufgaben stehen nur oben, nicht noch einmal im Verlauf.
+    /// Eine Zeile pro Eintrag; Aufgaben stehen nur oben, nicht noch einmal in der Mitschrift.
     private static func timeline(_ entries: [MeetingEntry], othersLabel: String) -> [String] {
         var lines: [String] = []
         var pending: (start: TimeInterval, last: TimeInterval, speaker: Speaker, texts: [String])?
