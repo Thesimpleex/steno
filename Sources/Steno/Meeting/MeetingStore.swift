@@ -9,16 +9,81 @@ enum MeetingStore {
 
     /// Legt den Ordner „2026-09-28 14-30 Titel“ in der Ablage an.
     static func makeFolder(for info: MeetingInfo) throws -> URL {
-        throw MeetingError.folderUnavailable(root.lastPathComponent)
+        let files = FileManager.default
+        let parent = root
+        let name = folderName(for: info)
+        do {
+            try files.createDirectory(at: parent, withIntermediateDirectories: true)
+            var folder = parent.appendingPathComponent(name, isDirectory: true)
+            var number = 2
+            while files.fileExists(atPath: folder.path) {
+                folder = parent.appendingPathComponent("\(name) \(number)", isDirectory: true)
+                number += 1
+            }
+            try files.createDirectory(at: folder, withIntermediateDirectories: false)
+            return folder
+        } catch {
+            throw MeetingError.folderUnavailable(parent.lastPathComponent)
+        }
     }
 
     /// Schreibt meeting.json und Protokoll.md, jeweils atomar.
-    static func write(_ file: MeetingFile, to folder: URL) throws {}
+    static func write(_ file: MeetingFile, to folder: URL) throws {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        encoder.dateEncodingStrategy = .iso8601
+        do {
+            try encoder.encode(file).write(to: folder.appendingPathComponent(MeetingFile.fileName), options: .atomic)
+            try Data(markdown(for: file).utf8).write(to: folder.appendingPathComponent(MeetingFile.markdownName), options: .atomic)
+        } catch {
+            throw MeetingError.folderUnavailable(folder.lastPathComponent)
+        }
+    }
 
-    static func read(_ folder: URL) -> MeetingFile? { nil }
+    /// Nil bei jedem Fehler: Eine beschädigte oder von Hand bearbeitete Datei darf die App nie zum Absturz bringen.
+    static func read(_ folder: URL) -> MeetingFile? {
+        guard let data = try? Data(contentsOf: folder.appendingPathComponent(MeetingFile.fileName)) else { return nil }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try? decoder.decode(MeetingFile.self, from: data)
+    }
 
     /// Speichert das Bild als PNG im Bilderordner und liefert den Dateinamen.
-    static func saveImage(_ image: NSImage, at offset: TimeInterval, in folder: URL) throws -> String { "" }
+    static func saveImage(_ image: NSImage, at offset: TimeInterval, in folder: URL) throws -> String {
+        let failure = MeetingError.folderUnavailable(folder.lastPathComponent)
+        // Über TIFF, damit ein Retina-Screenshot alle seine Bildpunkte behält und nicht auf Punktgröße schrumpft.
+        guard let tiff = image.tiffRepresentation,
+              let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) else { throw failure }
+        let files = FileManager.default
+        let images = folder.appendingPathComponent(MeetingFile.imageFolder, isDirectory: true)
+        let base = MeetingMarkdown.timestamp(offset).replacingOccurrences(of: ":", with: "-")
+        do {
+            try files.createDirectory(at: images, withIntermediateDirectories: true)
+            var name = base + ".png"
+            var number = 2
+            while files.fileExists(atPath: images.appendingPathComponent(name).path) {
+                name = "\(base)-\(number).png"
+                number += 1
+            }
+            try png.write(to: images.appendingPathComponent(name), options: .atomic)
+            return name
+        } catch {
+            throw failure
+        }
+    }
 
     static func markdown(for file: MeetingFile) -> String { MeetingMarkdown.render(file) }
+
+    /// „2026-09-28 14-30 Titel“ in Ortszeit. `/`, `:` und `\` gehen in Dateinamen nicht und Zeilenumbrüche stören:
+    /// Sie werden wie Leerzeichen behandelt.
+    private static func folderName(for info: MeetingInfo) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.timeZone = .autoupdatingCurrent
+        formatter.dateFormat = "yyyy-MM-dd HH-mm"
+        let words = info.title.split { $0.isWhitespace || "/:\\".contains($0) }.joined(separator: " ")
+        let title = String(words.prefix(60)).trimmingCharacters(in: .whitespaces)
+        return formatter.string(from: info.startedAt) + " " + (title.isEmpty ? "Meeting" : title)
+    }
 }
