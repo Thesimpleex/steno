@@ -6,6 +6,10 @@ import IOKit
 ///
 /// Das Gerät wird nur auf einer eigenen Queue geöffnet, gestartet und angehalten: Das dauert je nach Mikrofon
 /// (Bluetooth, gerade aufgewacht) unterschiedlich lange und soll weder den Hauptthread noch die Anzeige aufhalten.
+///
+/// Aufgenommen wird über eine Capture-Session genau von dem gewählten Gerät. AVAudioEngine öffnet dagegen immer
+/// erst das Standard-Mikrofon – bei AirPods schaltet das den Kopfhörer schon in den Headset-Modus, und das
+/// nachträgliche Umlenken auf ein anderes Gerät passt nicht mehr zum Format und bringt die App zum Absturz.
 final class Microphone {
     static let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16_000, channels: 1, interleaved: false)!
 
@@ -21,8 +25,9 @@ final class Microphone {
     var onFailure: ((Error) -> Void)?
 
     private let queue = DispatchQueue(label: "steno.microphone", qos: .userInitiated)
-    private var engine: AVAudioEngine?  // nur auf `queue`: das laufende Gerät
-    private var opened = 0              // nur auf `queue`
+    private var session: AVCaptureSession?  // nur auf `queue`: das laufende Gerät
+    private var tap: Tap?                   // nur auf `queue`: hält den Empfänger der Puffer am Leben
+    private var opened = 0                  // nur auf `queue`
 
     private var capture = Capture()
     private let lock = NSLock()  // für `capture`
@@ -60,12 +65,15 @@ final class Microphone {
     /// Beendet die Aufnahme und liefert, was bis hierher kam. Das Gerät hält danach im Hintergrund an und wird freigegeben.
     func stop() -> [Float] {
         let samples = lock.withLock { capture.end() }
-        queue.async {
-            self.engine?.inputNode.removeTap(onBus: 0)
-            self.engine?.stop()
-            self.engine = nil
-        }
+        queue.async { self.close() }
         return samples
+    }
+
+    /// Nur auf `queue`.
+    private func close() {
+        session?.stopRunning()
+        session = nil
+        tap = nil
     }
 
     /// Öffnet und startet das Gerät für Aufnahme `id`. Ist sie schon wieder beendet (⌥L & Co.), wird das Gerät
@@ -74,24 +82,46 @@ final class Microphone {
         opened += 1
         let number = opened
         guard lock.withLock({ capture.begin(id, engine: number) }) else { return }
-        let engine = AVAudioEngine()
-        let input = engine.inputNode
-        // Ist das Standard-Mikrofon ein Bluetooth-Headset (AirPods), das eingebaute nehmen: sonst fällt
-        // der Kopfhörer beim Musikhören in den schlechten Headset-Modus. Sonst gilt die Systemeinstellung.
-        // Bei zugeklapptem MacBook ist das eingebaute Mikrofon stumm – dann bleibt es beim Headset.
-        if Self.defaultInputIsBluetooth, !Self.lidClosed, var device = Self.builtInMicrophone(), let unit = input.audioUnit {
-            AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0,
-                                 &device, UInt32(MemoryLayout<AudioDeviceID>.size))
+        close()
+        guard let device = Self.chosenDevice() else { throw Failure.noInput }
+        let session = AVCaptureSession()
+        let input = try AVCaptureDeviceInput(device: device)
+        let output = AVCaptureAudioDataOutput()
+        // Float32 getrennt nach Kanälen, Abtastrate und Kanalzahl bleiben wie beim Gerät; umgerechnet wird danach.
+        output.audioSettings = [AVFormatIDKey: kAudioFormatLinearPCM, AVLinearPCMIsFloatKey: true, AVLinearPCMBitDepthKey: 32,
+                                AVLinearPCMIsNonInterleaved: true, AVLinearPCMIsBigEndianKey: false]
+        let tap = Tap { [weak self] buffer, converter in self?.receive(buffer, converter: converter, from: number) }
+        output.setSampleBufferDelegate(tap, queue: DispatchQueue(label: "steno.microphone.buffers", qos: .userInitiated))
+        // Vorher fragen statt hinzufügen und hoffen: Ein unpassendes Gerät löst sonst eine Ausnahme aus.
+        guard session.canAddInput(input), session.canAddOutput(output) else { throw Failure.noInput }
+        session.addInput(input)
+        session.addOutput(output)
+        session.startRunning()
+        guard session.isRunning else { throw Failure.noInput }
+        self.session = session
+        self.tap = tap
+    }
+
+    /// Welches Mikrofon: Ist das Standard-Mikrofon ein Bluetooth-Headset (AirPods), das eingebaute – sonst fällt
+    /// der Kopfhörer beim Musikhören in den schlechten Headset-Modus. Bei zugeklapptem MacBook ist das eingebaute
+    /// stumm, dann bleibt es beim Headset. Sonst gilt die Systemeinstellung.
+    enum Choice: Equatable { case builtIn, systemDefault }
+
+    static func choose(defaultIsBluetooth: Bool, lidClosed: Bool, builtInAvailable: Bool) -> Choice {
+        defaultIsBluetooth && !lidClosed && builtInAvailable ? .builtIn : .systemDefault
+    }
+
+    /// Das Gerät zur Wahl. Nur Geräte, die hier herauskommen, werden überhaupt geöffnet.
+    private static func chosenDevice() -> AVCaptureDevice? {
+        let standard = defaultInput()
+        let builtIn = builtInMicrophone()
+        let isBluetooth = standard.map { [kAudioDeviceTransportTypeBluetooth, kAudioDeviceTransportTypeBluetoothLE].contains(transportType($0)) }
+        switch choose(defaultIsBluetooth: isBluetooth ?? false, lidClosed: lidClosed, builtInAvailable: builtIn != nil) {
+        case .builtIn:
+            return builtIn.flatMap(uid).flatMap(AVCaptureDevice.init(uniqueID:))
+        case .systemDefault:
+            return standard.flatMap(uid).flatMap(AVCaptureDevice.init(uniqueID:)) ?? AVCaptureDevice.default(for: .audio)
         }
-        let inputFormat = input.outputFormat(forBus: 0)
-        guard inputFormat.sampleRate > 0, let converter = AVAudioConverter(from: inputFormat, to: Self.format) else {
-            throw Failure.noInput
-        }
-        input.installTap(onBus: 0, bufferSize: 2048, format: inputFormat) { [weak self] buffer, _ in
-            self?.receive(buffer, converter: converter, from: number)
-        }
-        try engine.start()
-        self.engine = engine
     }
 
     /// Auf dem Audio-Thread.
@@ -104,8 +134,10 @@ final class Microphone {
                 if self.lock.withLock({ self.capture.isLive(number) }) { self.onListening?() }
             }
         }
-        onLevel?(Self.level(of: buffer))
-        if let converted { onSamples?(converted) }
+        if let converted {
+            onLevel?(Self.level(of: converted))
+            onSamples?(converted)
+        }
     }
 
     private static var lidClosed: Bool {
@@ -125,10 +157,10 @@ final class Microphone {
         return convert(buffer, with: converter) ?? []
     }
 
-    private static func level(of buffer: AVAudioPCMBuffer) -> Float {
-        guard let channel = buffer.floatChannelData?[0], buffer.frameLength > 0 else { return 0 }
-        let frames = UnsafeBufferPointer(start: channel, count: Int(buffer.frameLength))
-        let rms = sqrt(frames.reduce(0) { $0 + $1 * $1 } / Float(frames.count))
+    /// Aus den schon umgerechneten Samples – so ist egal, in welchem Format das Gerät liefert.
+    private static func level(of samples: [Float]) -> Float {
+        guard !samples.isEmpty else { return 0 }
+        let rms = sqrt(samples.reduce(0) { $0 + $1 * $1 } / Float(samples.count))
         return min(1, rms * 12)
     }
 
@@ -151,15 +183,24 @@ final class Microphone {
         return Array(UnsafeBufferPointer(start: data, count: Int(output.frameLength)))
     }
 
-    private static var defaultInputIsBluetooth: Bool {
+    private static func defaultInput() -> AudioDeviceID? {
         var address = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDefaultInputDevice,
                                                  mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
         var device = AudioDeviceID(0)
         var size = UInt32(MemoryLayout<AudioDeviceID>.size)
-        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &device) == noErr
-        else { return false }
-        let type = transportType(device)
-        return type == kAudioDeviceTransportTypeBluetooth || type == kAudioDeviceTransportTypeBluetoothLE
+        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &device) == noErr,
+              device != kAudioObjectUnknown else { return nil }
+        return device
+    }
+
+    /// Unter dieser Kennung kennt auch AVFoundation das Gerät.
+    private static func uid(_ device: AudioDeviceID) -> String? {
+        var address = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyDeviceUID, mScope: kAudioObjectPropertyScopeGlobal,
+                                                 mElement: kAudioObjectPropertyElementMain)
+        var uid: Unmanaged<CFString>?
+        var size = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
+        guard AudioObjectGetPropertyData(device, &address, 0, nil, &size, &uid) == noErr else { return nil }
+        return uid?.takeRetainedValue() as String?
     }
 
     private static func transportType(_ device: AudioDeviceID) -> UInt32 {
@@ -188,6 +229,29 @@ final class Microphone {
         guard AudioObjectGetPropertyData(system, &address, 0, nil, &size, &devices) == noErr else { return nil }
 
         return devices.first { transportType($0) == kAudioDeviceTransportTypeBuiltIn && hasInput($0) }
+    }
+
+    /// Macht aus den Puffern der Session PCM-Puffer. Der Umrechner entsteht erst am tatsächlichen Format und wird
+    /// neu gebaut, sobald es sich ändert – ein Formatwechsel mitten in der Aufnahme kann so nichts zum Absturz bringen.
+    private final class Tap: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
+        private let deliver: (AVAudioPCMBuffer, AVAudioConverter) -> Void
+        private var converter: AVAudioConverter?  // nur auf der Queue der Puffer
+
+        init(_ deliver: @escaping (AVAudioPCMBuffer, AVAudioConverter) -> Void) { self.deliver = deliver }
+
+        func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+            guard let description = sampleBuffer.formatDescription else { return }
+            let format = AVAudioFormat(cmAudioFormatDescription: description)
+            guard format.sampleRate > 0,
+                  let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(sampleBuffer.numSamples)),
+                  buffer.frameCapacity > 0 else { return }
+            buffer.frameLength = buffer.frameCapacity
+            guard CMSampleBufferCopyPCMDataIntoAudioBufferList(sampleBuffer, at: 0, frameCount: Int32(buffer.frameLength),
+                                                               into: buffer.mutableAudioBufferList) == noErr else { return }
+            if converter?.inputFormat != format { converter = AVAudioConverter(from: format, to: Microphone.format) }
+            guard let converter else { return }
+            deliver(buffer, converter)
+        }
     }
 
     /// Welche Puffer zur Aufnahme gehören. Hauptthread, Queue und Audio-Thread teilen sich das, immer unter `lock`.

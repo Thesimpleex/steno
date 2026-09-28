@@ -49,3 +49,22 @@ final class MicrophoneTests: XCTestCase {
         XCTAssertEqual(capture.samples, [])
     }
 }
+
+/// Welches Mikrofon geöffnet wird – ein Bluetooth-Headset nur, wenn es nicht anders geht.
+final class MicrophoneChoiceTests: XCTestCase {
+    func testBluetoothDefaultFallsBackToTheBuiltInMicrophone() {
+        XCTAssertEqual(Microphone.choose(defaultIsBluetooth: true, lidClosed: false, builtInAvailable: true), .builtIn)
+    }
+
+    func testBluetoothStaysWhenTheBuiltInMicrophoneCannotHear() {
+        XCTAssertEqual(Microphone.choose(defaultIsBluetooth: true, lidClosed: true, builtInAvailable: true), .systemDefault,
+                       "zugeklappt ist das eingebaute stumm")
+        XCTAssertEqual(Microphone.choose(defaultIsBluetooth: true, lidClosed: false, builtInAvailable: false), .systemDefault,
+                       "etwa ein Mac mini ohne Mikrofon")
+    }
+
+    func testOtherMicrophonesFollowTheSystemSetting() {
+        XCTAssertEqual(Microphone.choose(defaultIsBluetooth: false, lidClosed: false, builtInAvailable: true), .systemDefault)
+        XCTAssertEqual(Microphone.choose(defaultIsBluetooth: false, lidClosed: true, builtInAvailable: true), .systemDefault)
+    }
+}
