@@ -42,6 +42,27 @@ final class QuickNoteTests: XCTestCase {
         XCTAssertEqual(overlay.model.state, .working)
     }
 
+    func testPanelSitsBelowTheNotchOrAboveTheBubble() {
+        let area = NSRect(x: 0, y: 0, width: 1512, height: 944)
+        let size = NSSize(width: 480, height: 74)
+        let notch = NSRect(x: 600, y: 944, width: 312, height: 38)
+        XCTAssertEqual(QuickNote.origin(for: size, in: area, anchor: notch), NSPoint(x: 516, y: 944 - 74 - 8))
+        let bubble = NSRect(x: 690, y: 20, width: 132, height: 32)
+        XCTAssertEqual(QuickNote.origin(for: size, in: area, anchor: bubble), NSPoint(x: 516, y: 60), "unten kein Platz: darüber")
+        let edge = NSRect(x: 0, y: 944, width: 100, height: 38)
+        XCTAssertEqual(QuickNote.origin(for: size, in: area, anchor: edge).x, 8, "bleibt auf dem Bildschirm")
+        XCTAssertEqual(QuickNote.origin(for: size, in: area, anchor: nil), NSPoint(x: 516, y: 944 - 74 - 64))
+    }
+
+    /// Nur Ergebnis und Meeting-Anzeige nehmen die Maus an – ein Diktat blockiert nie die Menüleiste.
+    func testOnlyResultAndMeetingAcceptClicks() {
+        XCTAssertTrue(OverlayModel.State.meeting.acceptsMouse)
+        XCTAssertTrue(OverlayModel.State.result("x").acceptsMouse)
+        for state: OverlayModel.State in [.hidden, .recording(handsFree: false), .recording(handsFree: true), .working, .message("x")] {
+            XCTAssertFalse(state.acceptsMouse, "\(state)")
+        }
+    }
+
     // MARK: Hilfen
 
     /// Schickt den Befehl an das Feld und liefert den Eintrag, der dadurch neu in der Zeitleiste steht.

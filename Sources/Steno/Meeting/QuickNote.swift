@@ -3,8 +3,8 @@ import AppKit
 /// Das kleine Notizfeld für laufende Meetings (⌃⌥N): Return legt die Eingabe in die Zeitleiste – leer als Markierung,
 /// mit „!“ am Anfang als Aufgabe –, Esc schließt, ohne etwas zu speichern.
 ///
-/// Das Feld bekommt die Tastatur, auch wenn macOS Steno auf ein Kürzel hin nicht nach vorn lässt; auch Diktate landen
-/// dann darin. Beim Schließen bekommt die App davor den Fokus zurück.
+/// Das Feld bekommt die Tastatur, ohne Steno nach vorn zu holen; auch Diktate landen dann darin. Beim Schließen bekommt
+/// die App davor den Fokus zurück.
 final class QuickNote: NSObject, NSTextFieldDelegate, NSWindowDelegate {
     private static let size = NSSize(width: 480, height: 74)
 
@@ -30,19 +30,28 @@ final class QuickNote: NSObject, NSTextFieldDelegate, NSWindowDelegate {
         panel.contentView = makeContent()
     }
 
-    func show() {
+    /// `anchor`: die angeklickte Anzeige an der Notch – das Feld erscheint direkt darunter (bei der Blase darüber).
+    func show(at anchor: NSRect? = nil) {
         guard meeting.state == .running, !panel.isVisible else { return }
         let front = NSWorkspace.shared.frontmostApplication
         previousApp = front == NSRunningApplication.current ? nil : front
         field.stringValue = ""
         let screen = NSScreen.screens.first { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) } ?? NSScreen.main
         if let area = screen?.visibleFrame {
-            // Etwas unter dem oberen Rand, damit die Anzeige an der Notch frei bleibt.
-            panel.setFrameOrigin(NSPoint(x: area.midX - Self.size.width / 2, y: area.maxY - Self.size.height - 64))
+            panel.setFrameOrigin(Self.origin(for: Self.size, in: area, anchor: anchor))
         }
-        NSApp.activate()
+        // Ohne `NSApp.activate()`: Das Feld nimmt als nicht aktivierendes Panel trotzdem die Tastatur an, und das
+        // Hauptfenster von Steno schiebt sich nicht über Zoom oder Teams.
         panel.makeKeyAndOrderFront(nil)
         panel.makeFirstResponder(field)
+    }
+
+    /// Unter der Anzeige, bei der Blase unten darüber; ohne Anzeige etwas unter dem oberen Rand, damit die Notch frei bleibt.
+    static func origin(for size: NSSize, in area: NSRect, anchor: NSRect?) -> NSPoint {
+        guard let anchor else { return NSPoint(x: area.midX - size.width / 2, y: area.maxY - size.height - 64) }
+        let x = min(max(anchor.midX - size.width / 2, area.minX + 8), area.maxX - size.width - 8)
+        let below = anchor.minY - size.height - 8
+        return NSPoint(x: x, y: below >= area.minY ? below : anchor.maxY + 8)
     }
 
     // MARK: Schließen
@@ -115,7 +124,7 @@ final class QuickNote: NSObject, NSTextFieldDelegate, NSWindowDelegate {
     }
 }
 
-/// Ein Fenster ohne Titelleiste, das trotzdem Tastatureingaben annimmt.
+/// Ein Fenster ohne Titelleiste, das trotzdem Tastatureingaben annimmt – auch solange eine andere App aktiv bleibt.
 private final class NotePanel: NSPanel {
-    override var canBecomeKey: Bool { true }
+    override var canBecomeKey: Bool { true }  // `becomesKeyOnlyIfNeeded` bleibt aus: das Feld will sofort tippen
 }

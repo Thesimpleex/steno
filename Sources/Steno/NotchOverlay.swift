@@ -28,6 +28,9 @@ enum OverlayStyle: String, CaseIterable, Identifiable {
 final class NotchOverlay {
     let model = OverlayModel()
     var style = OverlayStyle.automatic
+    /// Klick auf die Meeting-Anzeige; übergibt, wo sie auf dem Bildschirm steht.
+    var onNote: ((NSRect) -> Void)?
+    var onScreenshot: (() -> Void)?
     private let panel: NSPanel
     private var hideWork: DispatchWorkItem?
     private var generation = 0  // jede neue Anzeige macht ältere, noch ausstehende Animationen ungültig
@@ -154,6 +157,7 @@ final class NotchOverlay {
         stopMouseTracking()
         guard model.state != .hidden || panel.isVisible else { return }
         withAnimation(.spring(response: 0.32, dampingFraction: 0.9)) { model.state = model.resting }
+        if model.state.acceptsMouse { startMouseTracking() }
         let work = DispatchWorkItem { [weak self] in
             if self?.model.state == .hidden { self?.panel.orderOut(nil) }
         }
@@ -166,6 +170,16 @@ final class NotchOverlay {
         TextInsertion.copy(text)
         model.copied = true
         hide(after: 0.9)
+    }
+
+    fileprivate func openNote() {
+        guard model.state == .meeting else { return }
+        onNote?(activeArea)
+    }
+
+    fileprivate func takeScreenshot() {
+        guard model.state == .meeting else { return }
+        onScreenshot?()
     }
 
     private func show(_ state: OverlayModel.State) {
@@ -194,7 +208,7 @@ final class NotchOverlay {
         } else {
             open()
         }
-        if case .result = state { startMouseTracking() } else { stopMouseTracking() }
+        if state.acceptsMouse { startMouseTracking() } else { stopMouseTracking() }
     }
 
     private func frame(for geometry: NotchGeometry, on screen: NSScreen) -> NSRect {
@@ -225,7 +239,8 @@ final class NotchOverlay {
     }
 
     /// Das Fenster ist größer als die schwarze Fläche. Klicks nimmt es nur dort an, wo die Fläche ist –
-    /// daneben bleibt alles darunter bedienbar. Solange die Maus darauf ist, bleibt das Ergebnis stehen.
+    /// daneben bleibt alles darunter bedienbar. Solange die Maus darauf ist, bleibt das Ergebnis stehen bzw. zeigt die
+    /// Meeting-Anzeige ihre Knöpfe.
     private func startMouseTracking() {
         mouseTimer?.invalidate()
         mouseTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
@@ -234,7 +249,9 @@ final class NotchOverlay {
             if self.panel.ignoresMouseEvents == inside { self.panel.ignoresMouseEvents = !inside }
             guard inside != self.hovering else { return }
             self.hovering = inside
-            if !self.model.copied {
+            if self.model.state == .meeting {
+                self.model.hovering = inside
+            } else if !self.model.copied {
                 if inside { self.hideWork?.cancel() } else { self.hide(after: 5) }
             }
         }
@@ -245,6 +262,7 @@ final class NotchOverlay {
         mouseTimer?.invalidate()
         mouseTimer = nil
         hovering = false
+        model.hovering = false
         panel.ignoresMouseEvents = true
     }
 }
@@ -258,6 +276,15 @@ final class OverlayModel: ObservableObject {
         case message(String)
         /// Der leise Dauerhinweis, solange ein Meeting läuft.
         case meeting
+
+        /// Nur das Ergebnis und die Meeting-Anzeige nehmen Klicks an. Alles andere – vor allem ein Diktat – lässt die
+        /// Menüleiste darunter bedienbar.
+        var acceptsMouse: Bool {
+            switch self {
+            case .result, .meeting: return true
+            case .hidden, .recording, .working, .message: return false
+            }
+        }
     }
 
     @Published var state = State.hidden
@@ -272,6 +299,8 @@ final class OverlayModel: ObservableObject {
     @Published var meetingLevels = MeetingLevels()
     /// Nach dem Einfügen wird abgeschickt.
     @Published var willSend = false
+    /// Die Maus steht auf der Meeting-Anzeige: statt der Pegel erscheinen Notiz und Screenshot.
+    @Published var hovering = false
 
     func push(level: Float) {
         levels.removeFirst()
@@ -379,6 +408,7 @@ struct NotchShape: Shape {
 struct OverlayView: View {
     @ObservedObject var model: OverlayModel
     weak var overlay: NotchOverlay?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var size: CGSize { model.geometry.size(for: model.state) }
     private var expanded: Bool {
@@ -419,6 +449,9 @@ struct OverlayView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        // Ein Klick irgendwo auf die schwarze Fläche öffnet die Notiz – außerhalb davon kommen ohnehin keine Klicks an.
+        .contentShape(NotchShape(width: size.width, height: size.height, cornerRadius: 12))
+        .onTapGesture { overlay?.openNote() }
     }
 
     // MARK: Als Blase
@@ -436,6 +469,8 @@ struct OverlayView: View {
             }
         }
         .frame(width: size.width, height: size.height)
+        .contentShape(shape)
+        .onTapGesture { overlay?.openNote() }
         .opacity(visible ? 1 : 0)
         .scaleEffect(visible ? 1 : 0.9, anchor: .bottom)
         .padding(.bottom, NotchOverlay.bubbleInset)
@@ -498,8 +533,23 @@ struct OverlayView: View {
         switch model.state {
         case .recording: LevelHistory(levels: model.levels, dimmed: false)
         case .working: LevelHistory(levels: model.levels, dimmed: true)
-        case .meeting: MeetingLevelBars(levels: model.meetingLevels, sources: model.meetingSources)
+        case .meeting:
+            ZStack(alignment: .trailing) {
+                if model.hovering {
+                    meetingButtons.transition(.opacity.combined(with: .scale(scale: 0.8, anchor: .trailing)))
+                } else {
+                    MeetingLevelBars(levels: model.meetingLevels, sources: model.meetingSources).transition(.opacity)
+                }
+            }
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: model.hovering)
         default: EmptyView()
+        }
+    }
+
+    private var meetingButtons: some View {
+        HStack(spacing: 3) {
+            MeetingButton(symbol: "square.and.pencil", label: L("Notiz")) { overlay?.openNote() }
+            MeetingButton(symbol: "camera.viewfinder", label: L("Screenshot")) { overlay?.takeScreenshot() }
         }
     }
 
@@ -568,6 +618,27 @@ struct Elapsed: View {
                 .font(.system(size: 11, weight: .medium).monospacedDigit())
                 .foregroundStyle(.white.opacity(0.85))
         }
+    }
+}
+
+/// Kleiner runder Knopf auf der Meeting-Anzeige; hellt unter der Maus leicht auf.
+private struct MeetingButton: View {
+    let symbol: String
+    let label: String
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 10, weight: .semibold))
+                .frame(width: 20, height: 20)
+                .background(.white.opacity(hovering ? 0.22 : 0.1), in: Circle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .help(label)
+        .accessibilityLabel(label)
     }
 }
 

@@ -60,6 +60,8 @@ anyone for whom typing is tiring or painful – because of RSI, dyslexia, or sim
   browser – is "Others", renamable per meeting ("Ms Meyer"). Either source can be switched off.
 - ⌃⌥N adds a note while the meeting runs. An empty note sets a marker, a leading "!" makes it a task. A screenshot taken
   with ⌘⌃⇧4 lands in the timeline at that moment.
+- Or click the meeting display at the notch: the note field opens right below it. Hovering shows two small buttons,
+  note and screenshot; the latter starts the ⌘⌃⇧4 area selection. The Steno window stays closed.
 - Every meeting is a folder in a place you choose: `Protokoll.md`, `meeting.json` and the images. The Markdown reads
   well as plain text, opens in any editor, and the list in Steno searches all of it. Audio is never saved.
 - Only record when everyone involved agrees (§ 201 StGB in Germany).

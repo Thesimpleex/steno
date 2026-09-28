@@ -149,6 +149,25 @@ final class HotKeyMonitorTests: XCTestCase {
         XCTAssertEqual(drain(), ["note"])
     }
 
+    /// Der Screenshot-Knopf drückt ⌘⌃⇧4 selbst: vollständig losgelassen und vom eigenen Abgriff nicht beachtet,
+    /// auch wenn ⌃ oder ⌘ die Diktier-Taste ist.
+    func testOwnScreenshotKeysAreIgnored() {
+        let keys = ClipboardImages.screenshotKeys
+        XCTAssertEqual(keys.filter(\.down).count, keys.filter { !$0.down }.count)
+        XCTAssertEqual(keys.first { $0.key == 0x15 && $0.down }?.flags, [.maskCommand, .maskControl, .maskShift])
+        XCTAssertEqual(keys.last?.flags, [], "keine Sondertaste bleibt hängen")
+        for hotKey in [HotKey.rightCommand, .leftControl, .rightShift] {
+            monitor.hotKey = hotKey
+            for (key, down, flags) in keys {
+                let event = CGEvent(keyboardEventSource: nil, virtualKey: key, keyDown: down)!
+                event.flags = flags
+                event.setIntegerValueField(.eventSourceUserData, value: HotKeyMonitor.ownEventMarker)
+                XCTAssertFalse(monitor.feed(key == 0x15 ? .keyDown : .flagsChanged, event))
+            }
+            XCTAssertEqual(drain(), [], "\(hotKey)")
+        }
+    }
+
     // MARK: Hilfen
 
     /// Flags, die macOS beim Drücken der Taste mitschickt: das Bit der Taste selbst und das Sammel-Bit.

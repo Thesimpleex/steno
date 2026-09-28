@@ -55,4 +55,35 @@ final class ClipboardImages {
               let data = pasteboard.data(forType: type) else { return nil }
         return NSImage(data: data)
     }
+
+    // MARK: Aufnehmen
+
+    /// Drückt ⌘⌃⇧4 für den Nutzer: macOS nimmt den Ausschnitt selbst auf und legt ihn in die Ablage, von wo `poll()` ihn
+    /// holt. So braucht Steno keine Freigabe für Bildschirmaufnahmen, nur die Bedienungshilfen, die es ohnehin hat.
+    static func takeScreenshot() {
+        let source = CGEventSource(stateID: .privateState)
+        for (key, down, flags) in screenshotKeys {
+            guard let event = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: down) else { return }
+            event.setIntegerValueField(.eventSourceUserData, value: HotKeyMonitor.ownEventMarker)
+            event.flags = flags
+            event.post(tap: .cghidEventTap)
+        }
+    }
+
+    /// Wie von Hand gedrückt: Sondertasten zuerst, „4“ (feste Tastenposition, in jedem Layout gleich), dann alles los.
+    static let screenshotKeys: [(key: CGKeyCode, down: Bool, flags: CGEventFlags)] = {
+        let modifiers: [(CGKeyCode, CGEventFlags)] = [(0x37, .maskCommand), (0x3B, .maskControl), (0x38, .maskShift)]
+        var flags: CGEventFlags = []
+        var keys: [(key: CGKeyCode, down: Bool, flags: CGEventFlags)] = []
+        for (key, flag) in modifiers {
+            flags.insert(flag)
+            keys.append((key, true, flags))
+        }
+        keys += [(0x15, true, flags), (0x15, false, flags)]
+        for (key, flag) in modifiers.reversed() {
+            flags.remove(flag)
+            keys.append((key, false, flags))
+        }
+        return keys
+    }()
 }

@@ -339,6 +339,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             .receive(on: DispatchQueue.main)
             .sink { [model = dictation.overlay.model] in model.meetingLevels = $0 }
             .store(in: &subscriptions)
+        // Klick auf die Anzeige an der Notch: Notiz oder Bildschirmausschnitt, ohne das Steno-Fenster zu öffnen.
+        dictation.overlay.onNote = { [weak self] in self?.quickNote.show(at: $0) }
+        dictation.overlay.onScreenshot = { ClipboardImages.takeScreenshot() }
     }
 
     private func meetingChanged(_ state: MeetingSession.State) {
