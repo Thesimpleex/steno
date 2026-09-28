@@ -116,8 +116,9 @@ final class MeetingSession: ObservableObject {
         }
         var started: [AudioSource] = []
         do {
-            for source in chosen.values {
-                try source.start()
+            for (speaker, source) in chosen {
+                // Fehlt die Freigabe, sagt die Quelle es selbst; mit dem Fehler von Core Audio kann niemand etwas anfangen.
+                do { try source.start() } catch { throw error as? MeetingError ?? MeetingError.unavailable(speaker) }
                 started.append(source)
             }
             // Erst jetzt: Scheitert eine Quelle, bleibt kein leerer Ordner zurück.

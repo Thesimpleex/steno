@@ -89,6 +89,16 @@ final class MeetingSessionTests: XCTestCase {
         XCTAssertEqual(files.writes.count, 0)
     }
 
+    /// Mit einem Fehler von Core Audio kann niemand etwas anfangen – die Seite zeigt stattdessen einen Satz.
+    func testSourceFailureGetsAPlainMessage() {
+        others.failure = NSError(domain: NSOSStatusErrorDomain, code: -10851)
+        assertThrows(.unavailable(.others)) { try session.start(title: "", sources: [.microphone, .systemAudio]) }
+        others.failure = nil
+        you.failure = Microphone.Failure.noInput
+        assertThrows(.unavailable(.you)) { try session.start(title: "", sources: [.microphone, .systemAudio]) }
+        XCTAssertEqual([you.starts, others.starts], [you.stops, others.stops])
+    }
+
     func testRecordsBothSidesOnOneTimeline() throws {
         try session.start(title: "Planung", sources: [.microphone, .systemAudio])
         XCTAssertEqual(session.state, .running)

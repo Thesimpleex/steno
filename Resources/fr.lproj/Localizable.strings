@@ -259,6 +259,8 @@
 "Mikrofon oder Mac-Ton muss eingeschaltet sein." = "Le microphone ou le son du Mac doit être activé.";
 "Kein Mikrofonzugriff – bitte in den Systemeinstellungen erlauben." = "Pas d’accès au microphone – autorisez-le dans Réglages Système.";
 "Keine Freigabe für den Ton des Macs – bitte in den Systemeinstellungen erlauben." = "Pas d’autorisation pour le son du Mac – autorisez-la dans Réglages Système.";
+"Das Mikrofon lässt sich nicht starten." = "Impossible de démarrer le microphone.";
+"Der Ton des Macs lässt sich nicht aufnehmen." = "Impossible d’enregistrer le son du Mac.";
 "Der Ordner „%@“ lässt sich nicht beschreiben." = "Impossible d’écrire dans le dossier « %@ ».";
 "Teilnehmer" = "Participants";
 "Return speichert die Notiz. „!“ am Anfang macht eine Aufgabe, ein leeres Return setzt eine Markierung." = "Retour enregistre la note. Un « ! » au début crée une tâche, un Retour sans texte pose un repère.";

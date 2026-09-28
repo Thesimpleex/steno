@@ -60,6 +60,8 @@ struct MeetingLevels: Equatable {
 enum MeetingError: LocalizedError {
     case noModel, alreadyRunning, noSource
     case microphoneDenied, systemAudioDenied
+    /// Die Quelle startet nicht, und an der Freigabe liegt es nicht. Der Fehler von Core Audio sagt dem Nutzer nichts.
+    case unavailable(Speaker)
     case folderUnavailable(String)
 
     var errorDescription: String? {
@@ -69,6 +71,8 @@ enum MeetingError: LocalizedError {
         case .noSource: return L("Mikrofon oder Mac-Ton muss eingeschaltet sein.")
         case .microphoneDenied: return L("Kein Mikrofonzugriff – bitte in den Systemeinstellungen erlauben.")
         case .systemAudioDenied: return L("Keine Freigabe für den Ton des Macs – bitte in den Systemeinstellungen erlauben.")
+        case .unavailable(let speaker):
+            return speaker == .you ? L("Das Mikrofon lässt sich nicht starten.") : L("Der Ton des Macs lässt sich nicht aufnehmen.")
         case .folderUnavailable(let name): return L("Der Ordner „%@“ lässt sich nicht beschreiben.", name)
         }
     }
