@@ -49,9 +49,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let library = MeetingLibrary()
     private lazy var window = MainWindow(state: state, models: models, meeting: meeting, library: library)
     private lazy var onboarding = Onboarding(state: state, models: models)
+    private lazy var quickNote = QuickNote(meeting: meeting, overlay: dictation.overlay)
+    private lazy var clipboardImages = ClipboardImages(meeting: meeting, overlay: dictation.overlay)
     private var statusItem: NSStatusItem!
     private var subscriptions: Set<AnyCancellable> = []
     private var permissionTimer: Timer?
+    private var meetingClock: Timer?
     private var askedForAccessibility = false
 
     /// Lädt Modelle nacheinander. Beim Beenden wird hier gewartet, damit ein halb geladenes Modell sauber schließt.
@@ -86,7 +89,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             dictation.overlay.preview()
         }
         state.previewOverlay = { [dictation] in dictation.overlay.preview() }
-        keys.handler = { [dictation] in dictation.handle($0) }
+        keys.handler = { [dictation, quickNote] event in
+            if case .note = event { quickNote.show() } else { dictation.handle(event) }
+        }
         dictation.onRecordingChanged = { [weak self] recording in
             self?.keys.isRecording = recording
             self?.statusItem.button?.image = recording ? Glyph.recording : Glyph.idle
@@ -94,6 +99,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         HistoryStore.shared.onCleared = { [dictation] in dictation.forgetLast() }
         observeSystemEvents()
+        observeMeeting()
 
         state.requestAccessibility = { [weak self] in self?.requestAccessibility() }
         state.requestMicrophone = { [weak self] in self?.requestMicrophone() }
@@ -289,6 +295,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         state.autostart = SMAppService.mainApp.status == .enabled
     }
 
+    // MARK: Meeting
+
+    /// Was ein laufendes Meeting nebenbei braucht: das Kürzel ⌃⌥N, Bilder aus der Zwischenablage, den Hinweis an der Notch
+    /// und die Zeit neben dem Symbol in der Menüleiste.
+    private func observeMeeting() {
+        meeting.$state
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] in self?.meetingChanged($0) }
+            .store(in: &subscriptions)
+        meeting.$levels
+            .removeDuplicates()
+            .sink { [model = dictation.overlay.model] in model.meetingLevels = $0 }
+            .store(in: &subscriptions)
+    }
+
+    private func meetingChanged(_ state: MeetingSession.State) {
+        let running = state == .running
+        keys.isMeeting = running
+        meetingClock?.invalidate()
+        meetingClock = nil
+        guard running else {
+            clipboardImages.stop()
+            dictation.overlay.endMeeting()
+            statusItem.button?.title = ""
+            statusItem.button?.imagePosition = .imageOnly
+            statusItem.length = NSStatusItem.squareLength
+            return
+        }
+        clipboardImages.start()
+        dictation.overlay.showMeeting(since: meeting.info.startedAt, sources: meeting.info.sources)
+        statusItem.length = NSStatusItem.variableLength
+        statusItem.button?.imagePosition = .imageLeft
+        statusItem.button?.font = .monospacedDigitSystemFont(ofSize: 13, weight: .regular)
+        showElapsedTime()
+        meetingClock = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.showElapsedTime() }
+        meetingClock?.tolerance = 0.2
+    }
+
+    private func showElapsedTime() {
+        statusItem.button?.title = Elapsed.text(max(0, Int(Date.now.timeIntervalSince(meeting.info.startedAt))))
+    }
+
     // MARK: Menüleiste
 
     func menuNeedsUpdate(_ menu: NSMenu) {
@@ -300,6 +348,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if !state.ready, state.modelReady {
             menu.addItem(action(L("⚠︎ Einrichtung abschließen …"), #selector(showStart)))
         }
+        menu.addItem(.separator())
+        menu.addItem(meetingItem)
         menu.addItem(.separator())
         menu.addItem(action(L("Steno öffnen …"), #selector(showStart)))
         menu.addItem(action(L("Verlauf …"), #selector(showHistory)))
@@ -334,6 +384,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return item
     }
 
+    /// Beenden, solange eins läuft; sonst öffnet „Starten“ die Meetings-Seite, dort steht das Formular.
+    private var meetingItem: NSMenuItem {
+        if meeting.state == .running { return action(L("Meeting beenden"), #selector(stopMeeting)) }
+        let item = action(L("Meeting starten …"), #selector(startMeeting))
+        item.isEnabled = meeting.state == .idle  // in der Zeit danach werden noch die letzten Abschnitte umgewandelt
+        return item
+    }
+
+    @objc private func startMeeting() { window.show(.meetings) }
+    @objc private func stopMeeting() { meeting.stop() }
     @objc func showStart() { window.show(.start) }
     @objc func showHistory() { window.show(.history) }
     @objc func showDictionary() { window.show(.dictionary) }
