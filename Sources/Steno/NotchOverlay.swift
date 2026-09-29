@@ -31,7 +31,7 @@ final class NotchOverlay {
     /// Klick auf die Meeting-Anzeige; übergibt, wo sie auf dem Bildschirm steht.
     var onNote: ((NSRect) -> Void)?
     var onScreenshot: (() -> Void)?
-    private let panel: NSPanel
+    private var panel: NSPanel
     private var hideWork: DispatchWorkItem?
     private var generation = 0  // jede neue Anzeige macht ältere, noch ausstehende Animationen ungültig
     private var mouseTimer: Timer?
@@ -42,15 +42,7 @@ final class NotchOverlay {
     static let bubbleInset: CGFloat = 16
 
     init() {
-        panel = EdgePanel(contentRect: NSRect(origin: .zero, size: Self.canvas),
-                          styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
-        panel.level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 2)  // über der Menüleiste
-        panel.backgroundColor = .clear
-        panel.isOpaque = false
-        panel.hasShadow = false
-        panel.hidesOnDeactivate = false
-        panel.ignoresMouseEvents = true
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
+        panel = Self.makePanel()
         let host = FirstClickHostingView(rootView: OverlayView(model: model, overlay: nil))
         panel.contentView = host
         host.rootView = OverlayView(model: model, overlay: self)
@@ -60,6 +52,39 @@ final class NotchOverlay {
             guard let self, self.model.state != .hidden else { return }
             self.show(self.model.state)
         }
+        // Schreibtisch gewechselt, während etwas zu sehen ist (etwa die Meeting-Anzeige): Das Fenster muss mitkommen.
+        NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil,
+                                                          queue: .main) { [weak self] _ in
+            guard let self, self.panel.isVisible, !self.panel.isOnActiveSpace else { return }
+            self.replacePanel()
+        }
+    }
+
+    private static func makePanel() -> NSPanel {
+        let panel = EdgePanel(contentRect: NSRect(origin: .zero, size: canvas),
+                              styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
+        panel.level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 2)  // über der Menüleiste
+        panel.backgroundColor = .clear
+        panel.isOpaque = false
+        panel.hasShadow = false
+        panel.hidesOnDeactivate = false
+        panel.ignoresMouseEvents = true
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
+        return panel
+    }
+
+    /// Manchmal hängt das Fenster nach einer Weile nur noch auf einem Schreibtisch fest, obwohl es auf allen sein soll –
+    /// auf den anderen hört man dann nur den Ton. Das Verhalten neu zu setzen hilft nicht, ein frisches Fenster schon.
+    private func replacePanel() {
+        let old = panel
+        let content = old.contentView
+        old.contentView = NSView()
+        panel = Self.makePanel()
+        panel.contentView = content
+        panel.ignoresMouseEvents = old.ignoresMouseEvents
+        panel.setFrame(old.frame, display: false)
+        panel.orderFrontRegardless()
+        old.orderOut(nil)
     }
 
     func showRecording(handsFree: Bool, since start: Date = .now) {
@@ -206,6 +231,7 @@ final class NotchOverlay {
             panel.setFrame(frame(for: geometry, on: screen), display: false)
             panel.alphaValue = 1  // falls das Vorzeichnen beim Start noch nicht fertig ist
             panel.orderFrontRegardless()
+            if !panel.isOnActiveSpace { replacePanel() }
         }
         let open = { withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { self.model.state = state } }
         if reset {
