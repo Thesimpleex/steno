@@ -57,7 +57,8 @@ anyone for whom typing is tiring or painful – because of RSI, dyslexia, or sim
 ### Meetings
 
 - Transcribe a conversation with timestamps: your microphone is "You", the sound of your Mac – Teams, Zoom, the
-  browser – is "Others", renamable per meeting ("Ms Meyer"). Either source can be switched off.
+  browser – is "Others", renamable per meeting ("Ms Meyer"). Either source can be switched off. Spotify and Apple
+  Music are left out, so music doesn't end up in the transcript.
 - ⌃⌥N adds a note while the meeting runs. An empty note sets a marker, a leading "!" makes it a task. A screenshot taken
   with ⌘⌃⇧4 lands in the timeline at that moment.
 - Or click the meeting display at the notch: the note field opens right below it. Hovering shows two small buttons,
@@ -194,9 +195,9 @@ steht dort, wo dein Cursor ist. Whisper läuft komplett auf deinem Mac: keine Cl
   weiter), ⌃⌥V fügt das letzte Diktat noch einmal ein. Die Taste ist frei wählbar: ⌥, ⌘, ⌃, ⇧ oder fn.
 - Zu früh losgelassen? Ab drei Sekunden Aufnahme genügt sofortiges Drücken, dann läuft dieselbe Aufnahme weiter.
 - Return während der Aufnahme fügt den Text ein und drückt danach selbst Return – praktisch für Chats und KI-Assistenten.
-- Meetings mit Zeitstempeln: dein Mikrofon ist „Du“, der Ton des Macs (Teams, Zoom, Browser) sind „Andere“. Mit ⌃⌥N
-  kommen Notizen, Markierungen und Aufgaben dazu, ein Screenshot mit ⌘⌃⇧4 landet in der Zeitleiste. Jedes Meeting ist
-  ein Ordner mit `Protokoll.md`; der Ton wird nie gespeichert. Nur aufnehmen, wenn alle zustimmen (§ 201 StGB).
+- Meetings mit Zeitstempeln: dein Mikrofon ist „Du“, der Ton des Macs (Teams, Zoom, Browser) sind „Andere“,
+  Spotify und Apple Music bleiben außen vor. Mit ⌃⌥N kommen Notizen, Markierungen und Aufgaben dazu, ein Screenshot
+  mit ⌘⌃⇧4 landet in der Zeitleiste. Jedes Meeting ist ein Ordner mit `Protokoll.md`; der Ton wird nie gespeichert. Nur aufnehmen, wenn alle zustimmen (§ 201 StGB).
 - Die Anzeige wächst aus der Notch – auf Macs ohne Notch schwebt sie als Blase über dem Dock.
 - Ein eigenes Wörterbuch korrigiert ähnlich klingende Namen automatisch; Wörter, die macOS kennt, bleiben stehen.
 - Modelle von 148 MB bis 3,1 GB, Verlauf mit wählbarer Aufbewahrung, Musikpause und ein Einrichtungsassistent.
