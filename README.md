@@ -1,8 +1,8 @@
 <p align="center"><img src="docs/banner.png" alt="Steno – hold Option, speak, release" width="100%"></p>
 
 <p align="center">
-  <b>Free, open-source dictation for macOS.</b> Hold a key, talk, and your words appear wherever you type –<br>
-  transcribed on your Mac by OpenAI Whisper. No cloud, no account, no subscription.
+  <b>Free, open-source dictation and meeting notes for macOS.</b> Hold a key, talk, and your words appear wherever you<br>
+  type – transcribed on your Mac by OpenAI Whisper. No cloud, no account, no subscription.
 </p>
 
 <p align="center">
@@ -98,7 +98,7 @@ You need a Mac with Apple silicon (M1 or later), macOS 14.2 or later and at leas
 
 1. Download [`Steno.dmg`](https://github.com/Thesimpleex/steno/releases/latest/download/Steno.dmg) from the
    [latest release](../../releases/latest) or from the [website](https://www.majores.store/), open it and drag Steno
-   to Applications.
+   to Applications. Or with [Homebrew](https://brew.sh): `brew install --cask thesimpleex/tap/steno`
 2. Open Steno. Because it is distributed without a paid Apple Developer ID, macOS blocks the first launch. Close the
    message (**Done** or **OK**, depending on your macOS version).
 3. In **System Settings › Privacy & Security**, scroll down to the note that Steno was blocked and click
@@ -188,7 +188,7 @@ Full notices: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## Deutsch
 
-**Steno ist eine kostenlose, quelloffene Diktier-App für den Mac.** Taste halten, sprechen, loslassen – der Text
+**Steno ist eine kostenlose, quelloffene Diktier-App für den Mac, die auch Meetings mitschreibt.** Taste halten, sprechen, loslassen – der Text
 steht dort, wo dein Cursor ist. Whisper läuft komplett auf deinem Mac: keine Cloud, kein Konto, kein Abo.
 
 - ⌥ halten zum Diktieren, zweimal tippen für den Freihandmodus, Esc bricht ab (innerhalb von 3 Sekunden geht es
@@ -205,7 +205,8 @@ steht dort, wo dein Cursor ist. Whisper läuft komplett auf deinem Mac: keine Cl
   Englisch, Französisch, Italienisch und Spanisch.
 
 **Installieren:** [`Steno.dmg`](https://www.majores.store/de/) von der Webseite oder aus den
-[Releases](../../releases/latest) laden, Steno in „Programme“ ziehen, öffnen. macOS blockiert den ersten Start, weil
+[Releases](../../releases/latest) laden, Steno in „Programme“ ziehen, öffnen – oder per Homebrew:
+`brew install --cask thesimpleex/tap/steno`. macOS blockiert den ersten Start, weil
 die App ohne kostenpflichtiges Apple-Entwicklerkonto verteilt wird: Meldung schließen, dann unter
 **Systemeinstellungen › Datenschutz & Sicherheit** auf **Dennoch öffnen** klicken. Den Rest erledigt der Assistent.
 Voraussetzung: Mac mit Apple-Chip (M1 oder neuer) und macOS 14.2 oder neuer.
