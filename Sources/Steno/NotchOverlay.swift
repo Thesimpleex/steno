@@ -54,6 +54,12 @@ final class NotchOverlay {
         let host = FirstClickHostingView(rootView: OverlayView(model: model, overlay: nil))
         panel.contentView = host
         host.rootView = OverlayView(model: model, overlay: self)
+        // Monitor an- oder abgesteckt, Anordnung geändert: Was gerade zu sehen ist, zieht auf den passenden Bildschirm um.
+        NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil,
+                                               queue: .main) { [weak self] _ in
+            guard let self, self.model.state != .hidden else { return }
+            self.show(self.model.state)
+        }
     }
 
     func showRecording(handsFree: Bool, since start: Date = .now) {
@@ -187,8 +193,7 @@ final class NotchOverlay {
         stopPreview()  // eine echte Aufnahme beendet die Vorführung, ohne selbst ausgeblendet zu werden
         generation += 1
         let current = generation
-        let screen = NSScreen.screens.first { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) } ?? NSScreen.main
-        guard let screen else { return }
+        guard let screen = Self.activeScreen() else { return }
         let geometry = NotchGeometry(screen, style: style)
         // Anderer Bildschirm oder Stil: erst die Ausgangsgröße dort zeichnen, dann aufziehen. Sonst ist sie schon
         // gezeichnet, und das Aufziehen beginnt gleich im nächsten Bild.
@@ -209,6 +214,34 @@ final class NotchOverlay {
             open()
         }
         if state.acceptsMouse { startMouseTracking() } else { stopMouseTracking() }
+    }
+
+    /// Wo man gerade hinschaut: der Bildschirm mit dem vordersten Fenster der aktiven App – dort wird diktiert.
+    /// Der Mauszeiger liegt bei zwei Bildschirmen oft auf dem anderen. Ohne solches Fenster zählt er doch.
+    static func activeScreen() -> NSScreen? {
+        let mouse = NSScreen.screens.first { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) } ?? NSScreen.main
+        guard let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier,
+              let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
+                as? [[String: Any]],
+              let bounds = windows.first(where: { ($0[kCGWindowOwnerPID as String] as? pid_t) == pid
+                                                    && ($0[kCGWindowLayer as String] as? Int) == 0 })?[kCGWindowBounds as String]
+                as? NSDictionary,
+              let rect = CGRect(dictionaryRepresentation: bounds)
+        else { return mouse }
+        return screen(for: rect, among: NSScreen.screens.map(\.frame)).map { NSScreen.screens[$0] } ?? mouse
+    }
+
+    /// Welcher Bildschirm den größten Teil des Fensters zeigt. `window` in Bildschirmkoordinaten mit Ursprung oben links
+    /// (so liefert sie das Fenstersystem), `screens` wie bei NSScreen mit Ursprung unten links; der erste ist der Hauptbildschirm.
+    static func screen(for window: CGRect, among screens: [CGRect]) -> Int? {
+        guard let primary = screens.first else { return nil }
+        let flipped = CGRect(x: window.minX, y: primary.maxY - window.maxY, width: window.width, height: window.height)
+        let areas = screens.map { frame -> CGFloat in
+            let overlap = frame.intersection(flipped)
+            return overlap.isNull ? 0 : overlap.width * overlap.height
+        }
+        guard let best = areas.indices.max(by: { areas[$0] < areas[$1] }), areas[best] > 0 else { return nil }
+        return best
     }
 
     private func frame(for geometry: NotchGeometry, on screen: NSScreen) -> NSRect {
