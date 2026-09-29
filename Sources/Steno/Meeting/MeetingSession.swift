@@ -92,11 +92,13 @@ final class MeetingSession: ObservableObject {
     /// Vorschaubilder und Tests geben einen fertigen Zustand vor, Tests auch Attrappen für Tonquellen und Ablage.
     /// `folder` nur für Vorschaubilder: Von dort zeigt die Zeitleiste die Bilder.
     init(state: State = .idle, info: MeetingInfo = MeetingInfo(title: "", startedAt: .now, sources: []),
-         entries: [MeetingEntry] = [], folder: URL? = nil, microphone: AudioSource = Microphone(),
+         entries: [MeetingEntry] = [], levels: MeetingLevels = MeetingLevels(), folder: URL? = nil,
+         microphone: AudioSource = Microphone(),
          systemAudio: AudioSource = SystemAudio(), filing: Filing = Filing()) {
         self.state = state
         self.info = info
         self.entries = entries
+        self.levels = levels
         self.folder = folder
         self.microphone = microphone
         self.systemAudio = systemAudio

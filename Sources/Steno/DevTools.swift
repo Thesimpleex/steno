@@ -266,7 +266,11 @@ enum DevTools {
         let (setup, ready, models) = states()
         // Mit abgelegten Beispielen zeigen Start- und Meetings-Seite die letzten Meetings.
         let filed = fileMeetingSamples()
-        let running = MeetingSession(state: .running, info: meetingSamples.running, entries: meetingSamples.timeline, folder: filed?.folder)
+        // Der Anfang des Gesprächs: passt ohne Anschnitt ins Fenster, und beide Seiten sprechen gerade.
+        var opening = meetingSamples.running
+        opening.startedAt = .now.addingTimeInterval(-151)
+        let running = MeetingSession(state: .running, info: opening, entries: Array(meetingSamples.timeline.prefix(6)),
+                                     levels: MeetingLevels(you: 0.35, others: 0.7), folder: filed?.folder)
         for dark in [false, true] {
             let suffix = dark ? "dark" : "light"
             for (name, page) in [("home", Page.start), ("meetings", .meetings), ("history", .history),
