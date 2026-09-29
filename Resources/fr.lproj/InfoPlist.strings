@@ -1,5 +1,5 @@
 "NSMicrophoneUsageDescription" = "Steno n’enregistre votre voix que pendant la dictée ou une réunion. Tout reste sur ce Mac.";
 "NSAppleEventsUsageDescription" = "Steno met Spotify et Apple Music en pause pendant la dictée, puis les relance.";
 "NSAudioCaptureUsageDescription" = "Pendant une réunion, Steno écoute le son de votre Mac afin que les autres participants figurent dans le compte rendu. Le son n’est jamais enregistré.";
-"NSDocumentsFolderUsageDescription" = "Steno enregistre vos réunions sous forme de dossiers dans Documents › Steno Meetings, sauf si vous choisissez un autre emplacement.";
+"NSDocumentsFolderUsageDescription" = "Steno enregistre vos réunions sous forme de dossiers à l’emplacement que vous avez choisi.";
 "NSHumanReadableCopyright" = "© 2026 Thesimpleex · Licence MIT";

@@ -70,9 +70,10 @@ enum Settings {
         set { defaults.set(newValue, forKey: "modell") }
     }
 
-    /// Ordner für die Meeting-Protokolle. Standard: „Steno Meetings“ in Dokumente.
+    /// Ordner für die Meeting-Protokolle. Standard: bei Steno selbst – nicht in Dokumente, das iCloud abgleichen kann
+    /// und für das macOS schon beim ersten Blick in die Liste um Erlaubnis fragen würde.
     static var meetingFolder: String {
-        get { defaults.string(forKey: "meetingOrdner") ?? NSHomeDirectory() + "/Documents/Steno Meetings" }
+        get { defaults.string(forKey: "meetingOrdner") ?? Paths.support.appendingPathComponent("Meetings", isDirectory: true).path }
         set { defaults.set(newValue, forKey: "meetingOrdner") }
     }
 }

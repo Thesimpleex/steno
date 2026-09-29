@@ -35,7 +35,7 @@
 	<key>NSAudioCaptureUsageDescription</key>
 	<string>Steno hört bei einem Meeting den Ton deines Macs mit, damit auch die anderen Teilnehmer im Protokoll stehen. Ton wird nie gespeichert.</string>
 	<key>NSDocumentsFolderUsageDescription</key>
-	<string>Steno legt deine Meetings als Ordner unter Dokumente › Steno Meetings ab, solange du keinen anderen Ort wählst.</string>
+	<string>Steno legt deine Meetings als Ordner an dem Ort ab, den du dafür gewählt hast.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSHumanReadableCopyright</key>
