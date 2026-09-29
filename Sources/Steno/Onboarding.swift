@@ -192,8 +192,8 @@ struct OnboardingView: View {
 
     private var microphone: some View {
         stepLayout("mic.fill", L("Mikrofon erlauben"),
-                   state.microphoneDenied ? L("Steno hört nur zu, solange du diktierst. Der Zugriff wurde abgelehnt – du kannst ihn in den Systemeinstellungen erlauben.")
-                                          : L("Steno hört nur zu, solange du diktierst. Klicke unten und bestätige mit „Erlauben“.")) {
+                   state.microphoneDenied ? L("Steno hört nur zu, solange du diktierst oder ein Meeting läuft. Der Zugriff wurde abgelehnt – du kannst ihn in den Systemeinstellungen erlauben.")
+                                          : L("Steno hört nur zu, solange du diktierst oder ein Meeting läuft. Klicke unten und bestätige mit „Erlauben“.")) {
             if state.microphone {
                 success(L("Mikrofon ist erlaubt"))
             } else if state.microphoneDenied {

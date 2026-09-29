@@ -173,8 +173,8 @@
 "Herunterladen" = "Télécharger";
 "Kleinere Modelle findest du später in den Einstellungen." = "Des modèles plus légers sont disponibles plus tard dans les réglages.";
 "Mikrofon erlauben" = "Autoriser le micro";
-"Steno hört nur zu, solange du diktierst. Der Zugriff wurde abgelehnt – du kannst ihn in den Systemeinstellungen erlauben." = "Steno n’écoute que pendant la dictée. L’accès a été refusé – vous pouvez l’autoriser dans les Réglages Système.";
-"Steno hört nur zu, solange du diktierst. Klicke unten und bestätige mit „Erlauben“." = "Steno n’écoute que pendant la dictée. Cliquez ci-dessous et confirmez avec « Autoriser ».";
+"Steno hört nur zu, solange du diktierst oder ein Meeting läuft. Der Zugriff wurde abgelehnt – du kannst ihn in den Systemeinstellungen erlauben." = "Steno n’écoute que pendant une dictée ou une réunion. L’accès a été refusé – vous pouvez l’autoriser dans les Réglages Système.";
+"Steno hört nur zu, solange du diktierst oder ein Meeting läuft. Klicke unten und bestätige mit „Erlauben“." = "Steno n’écoute que pendant une dictée ou une réunion. Cliquez ci-dessous et confirmez avec « Autoriser ».";
 "Mikrofon ist erlaubt" = "Micro autorisé";
 "Systemeinstellungen › Datenschutz & Sicherheit › Mikrofon: den Schalter neben „Steno“ einschalten." = "Réglages Système › Confidentialité et sécurité › Micro : activez l’interrupteur à côté de « Steno ».";
 "Systemeinstellungen öffnen" = "Ouvrir les Réglages Système";

@@ -377,7 +377,7 @@ struct NotchGeometry: Equatable {
             switch state {
             case .hidden: return CGSize(width: 150, height: 40)
             case .recording, .working: return CGSize(width: 196, height: 40)
-            case .meeting: return CGSize(width: 132, height: 32)
+            case .meeting: return CGSize(width: 156, height: 32)  // Platz für „1:02:03“ neben Notiz und Screenshot
             case .message: return CGSize(width: 380, height: 54)
             case .result: return CGSize(width: 500, height: 92)
             }
@@ -650,6 +650,8 @@ struct Elapsed: View {
             Text(MeetingMarkdown.timestamp(context.date.timeIntervalSince(since)))
                 .font(.system(size: 11, weight: .medium).monospacedDigit())
                 .foregroundStyle(.white.opacity(0.85))
+                .lineLimit(1)
+                .fixedSize()  // lieber knapp am Rand als umbrochen
         }
     }
 }

@@ -173,8 +173,8 @@
 "Herunterladen" = "Download";
 "Kleinere Modelle findest du später in den Einstellungen." = "You’ll find smaller models in Settings later.";
 "Mikrofon erlauben" = "Allow Microphone";
-"Steno hört nur zu, solange du diktierst. Der Zugriff wurde abgelehnt – du kannst ihn in den Systemeinstellungen erlauben." = "Steno only listens while you dictate. Access was denied – you can allow it in System Settings.";
-"Steno hört nur zu, solange du diktierst. Klicke unten und bestätige mit „Erlauben“." = "Steno only listens while you dictate. Click below and confirm with “Allow”.";
+"Steno hört nur zu, solange du diktierst oder ein Meeting läuft. Der Zugriff wurde abgelehnt – du kannst ihn in den Systemeinstellungen erlauben." = "Steno only listens while you dictate or a meeting runs. Access was denied – you can allow it in System Settings.";
+"Steno hört nur zu, solange du diktierst oder ein Meeting läuft. Klicke unten und bestätige mit „Erlauben“." = "Steno only listens while you dictate or a meeting runs. Click below and confirm with “Allow”.";
 "Mikrofon ist erlaubt" = "Microphone allowed";
 "Systemeinstellungen › Datenschutz & Sicherheit › Mikrofon: den Schalter neben „Steno“ einschalten." = "System Settings › Privacy & Security › Microphone: turn on the switch next to “Steno”.";
 "Systemeinstellungen öffnen" = "Open System Settings";
