@@ -8,7 +8,15 @@ cd "$(dirname "$0")/.."
 mode=--snapshots
 if [[ "${1:-}" == "--marketing" ]]; then mode=--marketing; shift; fi
 out="${1:?Ordner angeben}"
-lang=(); [[ -n "${2:-}" ]] && lang=(--lang "$2")
+# Mit der Sprache auch das Datumsformat („26.09.26“ statt „9/26/26“), nur für diesen Aufruf.
+lang=()
+case "${2:-}" in
+  de) lang=(--lang de -AppleLocale de_DE) ;;
+  en) lang=(--lang en -AppleLocale en_US) ;;
+  fr) lang=(--lang fr -AppleLocale fr_FR) ;;
+  "") ;;
+  *) lang=(--lang "$2") ;;
+esac
 
 swift build --arch arm64 >/dev/null
 bin="$(swift build --arch arm64 --show-bin-path)/Steno"

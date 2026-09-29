@@ -6,7 +6,7 @@ import AppKit
 /// Das Feld bekommt die Tastatur, ohne Steno nach vorn zu holen; auch Diktate landen dann darin. Beim Schließen bekommt
 /// die App davor den Fokus zurück.
 final class QuickNote: NSObject, NSTextFieldDelegate, NSWindowDelegate {
-    private static let size = NSSize(width: 480, height: 74)
+    static let size = NSSize(width: 480, height: 74)
 
     private let meeting: MeetingSession
     private let overlay: NotchOverlay
@@ -27,7 +27,8 @@ final class QuickNote: NSObject, NSTextFieldDelegate, NSWindowDelegate {
         panel.hidesOnDeactivate = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.delegate = self
-        panel.contentView = makeContent()
+        field.delegate = self
+        panel.contentView = Self.makeContent(field)
     }
 
     /// `anchor`: die angeklickte Anzeige an der Notch – das Feld erscheint direkt darunter (bei der Blase darüber).
@@ -94,7 +95,8 @@ final class QuickNote: NSObject, NSTextFieldDelegate, NSWindowDelegate {
 
     // MARK: Aussehen
 
-    private func makeContent() -> NSView {
+    /// Auch für die Bilder der Webseite: `DevTools` zeichnet damit das Feld, ohne ein Meeting zu starten.
+    static func makeContent(_ field: NSTextField) -> NSView {
         field.placeholderString = L("Notiz zum Meeting …")
         field.font = .systemFont(ofSize: 17)
         field.isBordered = false
@@ -102,7 +104,6 @@ final class QuickNote: NSObject, NSTextFieldDelegate, NSWindowDelegate {
         field.focusRingType = .none
         field.cell?.usesSingleLineMode = true
         field.cell?.isScrollable = true
-        field.delegate = self
         field.frame = NSRect(x: 18, y: 34, width: Self.size.width - 36, height: 24)
 
         let hint = NSTextField(labelWithString: L("Return speichert · leer: Markierung · ! am Anfang: Aufgabe · Esc schließt"))
