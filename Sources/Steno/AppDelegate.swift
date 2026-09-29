@@ -97,6 +97,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if case .note = event { quickNote.show() } else { dictation.handle(event) }
         }
         dictation.onRecordingChanged = { [weak self] recording in
+            self?.meeting.setDictating(recording)
             self?.keys.isRecording = recording
             self?.statusItem.button?.image = recording ? Glyph.recording : Glyph.idle
             self?.statusItem.button?.setAccessibilityLabel(recording ? L("Steno – Aufnahme läuft") : "Steno")

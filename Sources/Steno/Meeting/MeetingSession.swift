@@ -80,6 +80,7 @@ final class MeetingSession: ObservableObject {
     private var activity: NSObjectProtocol?
     // Nur auf `work`:
     private var tracks: [Speaker: Track] = [:]
+    private var dictating = false
     private var latest = MeetingLevels()
     private var nextLevels: TimeInterval = 0
     // Nur auf `storage`:
@@ -210,6 +211,10 @@ final class MeetingSession: ObservableObject {
         stop()
         let deadline = Date.now.addingTimeInterval(seconds)
         while state == .finishing, Date.now < deadline { RunLoop.main.run(until: .now + 0.05) }
+        // Sonst sähe das Protokoll vollständig aus, obwohl das Ende fehlt.
+        if state == .finishing {
+            entries.insertSorted(MeetingEntry(offset: info.duration, kind: .note(Self.cutShort)))
+        }
         // Auch eine Änderung nach dem Ende, deren Speichern noch aussteht, darf nicht verloren gehen.
         guard saveWork != nil || state == .finishing else { return }
         save()
@@ -270,9 +275,23 @@ final class MeetingSession: ObservableObject {
         }
     }
 
+    /// Während eines Diktats gehört das Mikrofon dem Diktat: Was man dann spricht – etwa eine Antwort in einem anderen
+    /// Chat oder eine diktierte Notiz –, kommt nicht ins Protokoll. Was davor gesagt wurde, geht gleich zu Whisper.
+    func setDictating(_ on: Bool) {
+        work.async {
+            self.dictating = on
+            guard on, let tail = self.tracks[.you]?.flush() else { return }
+            DispatchQueue.main.async { self.send(Piece(speaker: .you, chunk: tail)) }
+        }
+    }
+
     /// Auf `work`.
     private func receive(_ samples: [Float], at time: TimeInterval, from speaker: Speaker) {
         guard let track = tracks[speaker] else { return }
+        if speaker == .you, dictating {
+            track.lastBuffer = time  // das Mikrofon läuft – der Wächter soll es nicht neu starten
+            return
+        }
         let recovered = track.stalls > 0
         let chunks = track.append(samples, at: time)
         guard recovered || !chunks.isEmpty else { return }
@@ -350,6 +369,7 @@ final class MeetingSession: ObservableObject {
 
     private static var behind: String { L("Die Umwandlung kommt nicht hinterher – der Text folgt etwas später.") }
     private static var noModel: String { L("Kein Sprachmodell geladen – ein Teil des Meetings fehlt.") }
+    private static var cutShort: String { L("Steno wurde beendet, bevor das Ende des Meetings aufgeschrieben war.") }
 
     private func finishIfDone() {
         guard state == .finishing, flushed, pending == 0 else { return }

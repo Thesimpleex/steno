@@ -168,6 +168,26 @@ final class MeetingSessionTests: XCTestCase {
         XCTAssertGreaterThan(saved.info.duration, 0)
     }
 
+    /// Ein Diktat mitten im Meeting – etwa eine Antwort in einem anderen Chat – kommt nicht ins Protokoll.
+    func testDictationStaysOutOfTheTranscript() throws {
+        try start([.microphone, .systemAudio])
+        session.setDictating(true)
+        you.play(TestAudio.speech(6) + TestAudio.silence(1))
+        session.setDictating(false)
+        others.play(TestAudio.speech(6) + TestAudio.silence(1))
+        wait { self.session.entries.count == 1 }
+        RunLoop.main.run(until: .now + 0.2)
+        XCTAssertEqual(speakers(), [.others])
+    }
+
+    func testSpeechBeforeADictationIsKept() throws {
+        try start(.microphone)
+        you.play(TestAudio.speech(2))  // noch keine Pause
+        session.setDictating(true)
+        wait { self.session.entries.count == 1 }
+        XCTAssertEqual(speakers(), [.you])
+    }
+
     func testResultsArrivingOutOfOrderStaySorted() throws {
         var answers: [(String?) -> Void] = []
         session.transcription = { _, done in answers.append(done) }
@@ -286,7 +306,10 @@ final class MeetingSessionTests: XCTestCase {
         session.shutdown(waitingAtMost: 0.3)
         XCTAssertLessThan(Date.now.timeIntervalSince(begin), 1)
         XCTAssertEqual(session.state, .finishing)
-        XCTAssertGreaterThan(try XCTUnwrap(files.writes.last).info.duration, 0)
+        let saved = try XCTUnwrap(files.writes.last)
+        XCTAssertGreaterThan(saved.info.duration, 0)
+        XCTAssertEqual(saved.entries.last?.kind, .note(L("Steno wurde beendet, bevor das Ende des Meetings aufgeschrieben war.")),
+                       "dass das Ende fehlt, steht im Protokoll")
     }
 
     /// Eine Änderung nach dem Ende, deren Speichern noch aussteht, geht beim Beenden der App nicht verloren.

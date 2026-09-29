@@ -270,6 +270,7 @@
 "Sobald jemand spricht, erscheint der Text hier." = "Dès que quelqu’un parle, le texte apparaît ici.";
 "So heißen die anderen im Protokoll" = "Nom des autres dans le compte rendu";
 "Kein Sprachmodell geladen – ein Teil des Meetings fehlt." = "Aucun modèle vocal chargé – une partie de la réunion manque.";
+"Steno wurde beendet, bevor das Ende des Meetings aufgeschrieben war." = "Steno a été quitté avant que la fin de la réunion soit transcrite.";
 "Die Umwandlung kommt nicht hinterher – der Text folgt etwas später." = "La transcription prend du retard – le texte suivra un peu plus tard.";
 "Das Mikrofon liefert gerade keinen Ton." = "Le micro ne fournit aucun son pour le moment.";
 "Vom Mac-Ton kommt gerade nichts an." = "Aucun son du Mac n’arrive pour le moment.";
